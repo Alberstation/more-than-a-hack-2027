@@ -1,0 +1,446 @@
+% Plan de mejora y checklist de entrega -- More than a Hack 2027, Fase 1 (posesion)
+% Compilar:  tectonic plan_de_mejora.tex      o      pdflatex plan_de_mejora.tex (dos veces)
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noquoting]{babel}
+\usepackage{lmodern}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[hidelinks]{hyperref}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcommand{\lab}[1]{\texttt{\textbf{#1}}}
+\newcommand{\ok}{\textcolor{green!50!black}{\textbf{S\'I}}}
+\newcommand{\no}{\textcolor{red!70!black}{\textbf{NO}}}
+\newcommand{\todo}{$\square$}
+
+\title{More than a Hack 2027 --- Fase 1: Posesi\'on del bal\'on\\[4pt]
+\large Plan de mejora del baseline, requisitos del entregable y cumplimiento de normas}
+\author{Equipo --- documento interno de trabajo}
+\date{29 de octubre de 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este documento resume qu\'e pide el reto, qu\'e hay que entregar y c\'omo, qu\'e normas nos
+limitan, por qu\'e el modelo de referencia (\emph{baseline}) se queda en
+\texttt{spellF1}~$=0.2433$, y las cinco l\'ineas de mejora que vamos a implementar, apoyadas
+en repositorios y datasets p\'ublicos. Sirve como hoja de ruta del equipo y como esqueleto del
+documento t\'ecnico final que exige la entrega.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{El reto en una p\'agina}
+%======================================================================
+
+Un partido completo de LaLiga 2024--25 (FC Barcelona -- Athletic Club, jornada~2). Para
+\textbf{cada frame} del v\'ideo t\'actico (199\,319 frames a 25\,fps) hay que decir qui\'en tiene
+el bal\'on.
+
+\begin{center}
+\begin{tabularx}{\linewidth}{c l L}
+\toprule
+Etiqueta & Significado & Cu\'ando \\
+\midrule
+\lab{H} & Barcelona (local) en posesi\'on, bal\'on vivo & El Bar\c{c}a tiene el control \\
+\lab{A} & Athletic (visitante) en posesi\'on, bal\'on vivo & El Athletic tiene el control \\
+\lab{D} & Bal\'on muerto & Fuera de banda, falta, c\'orner, gol, antes de un saque.
+  No se pregunta qui\'en reanuda: siempre \lab{D} \\
+\lab{X} & No contesto & Gratis fuera de las partes. Dentro de ellas, \texttt{spellF1} lo
+  rellena con la \'ultima etiqueta dada en esa parte \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\paragraph{Reglas de posesi\'on.}
+\begin{itemize}
+  \item Con el bal\'on en juego siempre lo tiene un equipo; si est\'a suelto o disputado sigue
+        siendo del \'ultimo que lo control\'o.
+  \item S\'olo hay cambio cuando el rival obtiene \textbf{control} (proxies: retener el bal\'on
+        unos segundos, o encadenar m\'as de dos pases).
+  \item No es cambio: un toque sin control, un desv\'io que no intercepta, un duelo a\'ereo
+        ganado sin control posterior.
+  \item Una \emph{posesi\'on} es un tramo m\'aximo de \lab{H} o de \lab{A}.
+        \lab{H H D D H H} son dos posesiones.
+  \item El ground truth se obtiene mec\'anicamente del tracking \emph{corregido}: \lab{D} donde
+        marca bal\'on muerto, si no el equipo due\~no. Sin suavizado. Contiene posesiones de
+        menos de 1\,s.
+\end{itemize}
+
+\paragraph{Frames puntuados.} 11\,185--90\,651 (1.ª parte) y 110\,808--190\,197 (2.ª parte):
+158\,857 frames. Entre 110\,808 y 113\,742 todo es \lab{D} (la 2.ª parte a\'un no ha empezado).
+
+\paragraph{M\'etricas.}
+\begin{itemize}
+  \item \textbf{\texttt{spellF1} (ranking).} Cada posesi\'on es un objeto. Se emparejan las
+        predichas con las reales uno a uno por IoU temporal del mismo equipo y se promedia el F1
+        en umbrales 0.3, 0.4, 0.5, 0.6, 0.7. Partir o fusionar posesiones cuesta mucho; un
+        desfase de 3 frames apenas (0.98), de 1\,s mucho (0.65). Ruido $\approx 0.04$.
+  \item \textbf{\texttt{macroF1} (desempate).} F1 medio por frame de \lab{H}, \lab{A}, \lab{D}.
+        Ruido $\approx 0.01$. \lab{X} cuenta como fallo.
+\end{itemize}
+
+%======================================================================
+\section{El entregable: qu\'e hay que entregar y c\'omo}
+%======================================================================
+
+Fuente: \texttt{SUBMISSION.md}, \texttt{CHALLENGE.md}, \texttt{RULES.md}. Fecha l\'imite:
+\textbf{17 de noviembre de 2026}. Un \'unico formulario de Google (se enviar\'a por email), una
+respuesta por equipo, editable; cuenta la \'ultima antes del plazo. No hay leaderboard ni
+feedback previo.
+
+\subsection{1. Fichero de posesi\'on (lo \'unico que punt\'ua)}
+\begin{itemize}
+  \item Nombre: \texttt{<nombre\_equipo>.csv} (el nombre del fichero es el nombre en la tabla).
+  \item Cabecera exacta \texttt{frame,label}; exactamente \textbf{199\,319} filas de datos;
+        \texttt{frame} de 0 a 199\,318 en orden; etiqueta en \{\lab{H},\lab{A},\lab{D},\lab{X}\};
+        sin celdas vac\'ias.
+  \item Validar siempre el fichero exacto que se sube:
+        \texttt{python evaluation/validate\_submission.py <fichero>.csv}.
+\end{itemize}
+
+\subsection{2. Repositorio de c\'odigo p\'ublico}
+\begin{itemize}
+  \item URL p\'ublica. Debe permitir pasar de los datos al CSV: c\'odigo, dependencias con
+        versi\'on fijada, instrucciones de instalaci\'on y ejecuci\'on, y el comando que regenera
+        el fichero.
+  \item Reproducibilidad \textbf{exacta}: mismo fichero byte a byte, no aproximado. Semillas
+        fijadas, sin dependencia del orden de hilos, versiones fijadas.
+  \item \textbf{Sin los datos del partido} (ni v\'ideo, ni tracking, ni exportaciones por frame que
+        permitan reconstruirlos). \texttt{data/} en \texttt{.gitignore}.
+  \item Debe ser \textbf{nuestro} repositorio (fork o repo nuevo), no un push al remoto
+        \texttt{metrica-sports}.
+\end{itemize}
+
+\subsection{3. Documento t\'ecnico corto}
+PDF o Markdown, unas pocas p\'aginas, nombre \texttt{<nombre\_equipo>.pdf}. Debe cubrir:
+\begin{enumerate}
+  \item el enfoque, y por qu\'e ese y no otro;
+  \item qu\'e datos se usaron y c\'omo, y cu\'ales se probaron y descartaron;
+  \item datos de entrenamiento: cada dataset etiquetado, su fuente, qui\'en lo etiquet\'o y
+        cu\'anto (ninguno del partido del reto);
+  \item las reglas de posesi\'on implementadas (balones sueltos, disputas, reanudaciones);
+  \item limitaciones y qu\'e se mejorar\'ia con m\'as tiempo;
+  \item c\'omo reproducirlo.
+\end{enumerate}
+
+\subsection{Equipo}
+De 3 a 5 miembros (con menos no se puede optar al Innovation Challenge ni al Final Pitch). Hace
+falta una cuenta de Google para subir al formulario.
+
+%======================================================================
+\section{Normas y c\'omo las cumplimos}
+%======================================================================
+
+\begin{longtable}{p{0.47\linewidth} p{0.45\linewidth}}
+\toprule
+\textbf{Norma} & \textbf{C\'omo la cumplimos} \\
+\midrule
+\endhead
+Cualquier m\'etodo, siempre que los organizadores puedan acceder a \'el e inspeccionarlo y el
+documento t\'ecnico lo explique. &
+Todo el c\'odigo en nuestro repo p\'ublico; s\'olo dependencias y datasets p\'ublicos;
+documentados en el informe. \\
+\addlinespace
+Las etiquetas deben salir de un algoritmo. Nada etiquetado ni corregido a mano en el partido del
+reto, en ninguna cantidad ni para ning\'un fin (tampoco entrenar o validar). &
+Ning\'un frame del partido se etiqueta a mano. Ver el v\'ideo s\'olo para entender y depurar; no se
+convierten observaciones en reglas o constantes ligadas a frames concretos. \\
+\addlinespace
+Prohibido usar el ground truth privado o derivados. Los 5 minutos p\'ublicos s\'olo para comprobar
+el pipeline, no para entrenar ni ajustar. &
+Los 5 minutos s\'olo para \emph{tests} de formato y alineaci\'on. Ning\'un hiperpar\'ametro se
+elige mir\'andolos. Selecci\'on de modelos en partidos externos. \\
+\addlinespace
+Prohibido cualquier dato hecho por personas sobre el partido del reto (eventos Opta, StatsBomb,
+Wyscout, LaLiga, tracking corregido, anotaciones). &
+No se descarga ni se usa ning\'un dato del Bar\c{c}a--Athletic J2 2024--25 fuera del paquete
+oficial. \\
+\addlinespace
+Datos de \textbf{otros partidos}, incluso etiquetados a mano, est\'an permitidos en cualquier
+cantidad. &
+IDSSE/DFL (CC-BY~4.0), Metrica sample-data, SkillCorner open data. Se citan y documentan
+(fuente, qui\'en etiquet\'o, cu\'anto). \\
+\addlinespace
+Pseudo-etiquetas y aprendizaje no supervisado en el partido est\'an permitidos si ninguna
+persona decide ninguna etiqueta. &
+Cualquier auto-entrenamiento usa s\'olo salidas autom\'aticas (tracking/Smart Tagging dados).
+Se consultar\'a a la organizaci\'on antes de usarlo para el detector de bal\'on. \\
+\addlinespace
+No subir v\'ideo, datos ni extractos a un LLM en la nube (T\&C). &
+Ning\'un dato del reto sale de las m\'aquinas del equipo. Modelos locales \'unicamente. \\
+\addlinespace
+El repo debe regenerar exactamente el fichero entregado. &
+Un \'unico comando; semillas fijas; dependencias fijadas; prueba de regeneraci\'on y
+comparaci\'on por hash antes de enviar. \\
+\addlinespace
+No redistribuir los datos. &
+\texttt{data/} y cach\'es derivadas (\texttt{*.npz}) en \texttt{.gitignore}. \\
+\addlinespace
+Dudas cerca de una l\'inea: preguntar antes. &
+Issue en el repo oficial o email a \texttt{hackathon.talentarena@mobileworldcapital.com}. \\
+\bottomrule
+\end{longtable}
+
+\paragraph{Licencias.} Evitar contaminar nuestro repo con licencias incompatibles o dudosas:
+Ball Radar no tiene fichero de licencia (usar s\'olo como referencia o pedir permiso); T-DEED y
+\texttt{sn-gamestate} son GPL-3.0; los pesos entrenados con Ultralytics quedan bajo AGPL-3.0.
+Preferir MIT/BSD/Apache/MPL.
+
+%======================================================================
+\section{Diagn\'ostico del baseline}
+%======================================================================
+
+El baseline asigna el bal\'on al equipo del jugador m\'as cercano y aplica una votaci\'on por
+mayor\'ia en una ventana centrada de $\pm 50$ frames ($\pm 2$\,s). En el partido completo:
+\texttt{macroF1} 0.6724, \texttt{spellF1} \textbf{0.2433}.
+
+\begin{enumerate}
+  \item \textbf{Bal\'on muerto = ``no veo el bal\'on''.} El bal\'on falta en el 41\,\% de los frames
+        puntuados, sobre todo en los que importan. Cada hueco se convierte en \lab{D} y parte una
+        posesi\'on real. Las paradas reales no se detectan con criterio.
+  \item \textbf{Cercan\'ia $\neq$ control.} Rechaces, toques y duelos cambian el equipo.
+  \item \textbf{Ventana fija.} Corta: parpadeo; larga: borra posesiones cortas y retrasa cambios.
+        No hay ninguna noci\'on de que las posesiones tienen inicio y fin.
+\end{enumerate}
+
+La m\'etrica es de la familia del \emph{F1 segmental} de segmentaci\'on de acciones: castiga la
+sobresegmentaci\'on mucho m\'as que los errores sueltos por frame. Por eso la mayor palanca es
+estructural, no un clasificador m\'as fino.
+
+%======================================================================
+\section{Las cinco l\'ineas de mejora}
+%======================================================================
+
+\subsection{M1. Decodificaci\'on temporal estructurada (HMM / Viterbi H--A--D)}
+\textbf{Idea.} Sustituir la votaci\'on por un modelo de estados ocultos de tres estados
+(\lab{H}, \lab{A}, \lab{D}) con coste de transici\'on y decodificaci\'on de Viterbi. Las
+emisiones son log-probabilidades por frame que salen de M2--M4; los frames sin evidencia emiten
+uniforme (el estado se mantiene).
+
+\textbf{Por qu\'e.} En PathCRF, s\'olo a\~nadir Viterbi con restricciones a un modelo por frame
+sube el F1 de eventos de 65.3\,\% a 73.1\,\%. Elimina parpadeos sin borrar cambios bien
+sustentados, y permite restricciones de f\'utbol:
+\begin{itemize}
+  \item \lab{H}$\leftrightarrow$\lab{A} con coste alto (requiere evidencia de control sostenida);
+  \item \lab{D}$\to$vivo y vivo$\to$\lab{D} con coste propio, apoyado por M3;
+  \item duraci\'on m\'inima (semi-Markov o estados encadenados) para evitar posesiones de pocos
+        frames sin evidencia.
+\end{itemize}
+\textbf{Coste.} Bajo (numpy). \textbf{Estado:} en implementaci\'on.
+
+\subsection{M2. Posesi\'on con y sin bal\'on: control, no cercan\'ia}
+\textbf{Con bal\'on visible.} Regla de control tipo Vidal-Codina / databallpy: jugador a menos
+de $\sim$1.5\,m y cambio de velocidad o direcci\'on del bal\'on (golpeo) o permanencia; umbrales de
+partida calibrados en Metrica por Bischofberger et al.\ (26.8\,m/s$^2$, 1.4\,m, 91\,ms). Un
+cambio de equipo s\'olo se confirma con control.
+
+\textbf{Sin bal\'on (41\,\%).}
+\begin{itemize}
+  \item Interpolar huecos cortos del bal\'on; en huecos largos mantener al \'ultimo due\~no salvo
+        evidencia contraria (y usar \lab{X} dentro de posesiones dudosas: gratis en
+        \texttt{spellF1}).
+  \item Se\~nal colectiva: el equipo atacante est\'a m\'as adelantado y abierto, el defensor
+        compacto y presionando (centroides, anchura, l\'inea defensiva, direcci\'on de ataque por
+        parte).
+  \item Modelos p\'ublicos sin bal\'on: \textbf{PathCRF} (KDD'26, MPL-2.0, con pesos; F1 de
+        eventos 75.7\,\% en Sportec) y \textbf{Ball Radar} (KDD'23; 85.9\,\% de posesi\'on de
+        equipo sin bal\'on, 93\,\% viendo el 20\,\% del bal\'on; entrena con datos de Metrica).
+        Ambos invariantes a permutaciones; PathCRF asume 22 jugadores estables, hay que
+        adaptarlo a tracklets.
+  \item Prior del Smart Tagging: el \texttt{Team} de las fases (Build Up, Progression, \ldots).
+\end{itemize}
+
+\subsection{M3. Detecci\'on de bal\'on muerto (\lab{D})}
+\begin{itemize}
+  \item \textbf{Smart Tagging:} cada bal\'on parado (59 instancias) marca el \emph{final} de un
+        tramo \lab{D}; buscar hacia atr\'as su inicio. Los saques de banda no llevan equipo
+        (no hace falta: \lab{D} no lo pide).
+  \item \textbf{Geometr\'ia:} bal\'on fuera de las l\'ineas (con margen y homograf\'ia); bal\'on quieto en
+        un punto de reanudaci\'on; disparadores de Vidal-Codina (todos en su campo y uno en el
+        centro = saque inicial; jugador m\'as all\'a de la banda = saque de banda; junto al
+        bander\'in = c\'orner; en el \'area peque\~na = saque de puerta).
+  \item \textbf{Din\'amica colectiva:} ca\'ida brusca de la velocidad media (en juego la intensidad
+        es m\'as del doble que en las paradas).
+  \item \textbf{Clasificador estilo Lang et al.\ 2022:} s\'olo posiciones/velocidades de jugadores
+        con ventanas temporales; 92\,\% de acierto por frame, error de frontera $\sim$1.7\,s.
+        Reimplementable con LightGBM y entrenable en IDSSE/DFL.
+  \item \textbf{Ajuste fino de fronteras:} fin de parada en el golpeo de reanudaci\'on (pico de
+        aceleraci\'on del bal\'on junto a un jugador); inicio en el cruce de l\'inea o la ca\'ida de
+        velocidad.
+\end{itemize}
+
+\subsection{M4. Recuperar el bal\'on desde el v\'ideo}
+\textbf{WASB-SBDT} (NTT, BMVC 2023, MIT, con pesos) se evalu\'o en f\'utbol con c\'amaras fijas
+1920$\times$1080 a 25\,fps, la misma configuraci\'on que el reto: F1 88.3 / AP 83.6 a $\sim$56\,FPS
+(TrackNetV2: 86.6; detectores de un frame: 36--45). Plan: inferencia local sobre los frames sin
+bal\'on, proyecci\'on al campo con la homograf\'ia, filtrado de candidatos con el modelo de
+movimiento, y huecos cortos rellenados por ajuste f\'isico. Ojo: los bal\'ones a\'ereos sesgan la
+proyecci\'on. Requiere GPU (no disponible a\'un en la m\'aquina de desarrollo). Variante a consultar
+con la organizaci\'on: ajustar el detector con pseudo-etiquetas del propio tracking.
+
+\subsection{M5. Entrenamiento y validaci\'on en partidos externos}
+\textbf{IDSSE/DFL} (Bassek et al., \emph{Scientific Data} 2025, CC-BY~4.0): 7 partidos de
+Bundesliga a 25\,Hz con \texttt{BallStatus} (vivo/muerto) y \texttt{BallPossession}
+(local/visitante) por frame: H/A/D nativo. Se carga con kloppy
+(\texttt{sportec.load\_open\_tracking\_data}, \textbf{con \texttt{only\_alive=False}}, o se
+pierden los frames muertos).
+
+\begin{itemize}
+  \item \textbf{Degradar para parecerse a nuestro input:} coordenadas 0--1; quitar el bal\'on en
+        $\sim$41\,\% de frames \emph{en r\'afagas} (zonas densas, bal\'on a\'ereo, paradas); ruido de
+        posici\'on; romper identidades en tracklets.
+  \item \textbf{Validar con nuestra m\'etrica:} \texttt{spellF1} y \texttt{macroF1} sobre partidos
+        de IDSSE con \texttt{evaluation/possession\_metrics.py}. Es nuestro \'unico ``leaderboard''
+        legal.
+  \item \textbf{Riesgo:} el criterio de bal\'on muerto de DFL puede no coincidir con el de Metrica
+        en las fronteras. Comparar proporciones de tiempo vivo antes de fiarse.
+  \item Complementos: Metrica sample-data (3 partidos, mismo proveedor; etiquetas derivables de
+        eventos) y SkillCorner open data (10 partidos, posesi\'on por frame a 10\,fps).
+\end{itemize}
+
+%======================================================================
+\section{Resultados (29/10/2026)}
+%======================================================================
+
+\paragraph{Qu\'e hay implementado} (\texttt{possession/}, instrucciones en \texttt{SOLUTION.md}):
+\begin{itemize}
+  \item \textbf{v1}: evidencias a mano (distancias al bal\'on, jugadores al paso, bal\'on fuera) +
+        Viterbi. Sin entrenamiento.
+  \item \textbf{v2}: 46 caracter\'isticas por frame sin identidades de jugador (bal\'on y jugadores
+        cercanos, \'ultima posici\'on conocida del bal\'on, forma y ritmo de cada equipo, ventanas
+        pasadas y futuras, configuraciones de reanudaci\'on), clasificador
+        \texttt{HistGradientBoosting} entrenado en IDSSE degradado con aumento por intercambio de
+        equipos, y Viterbi H/A/D con costes elegidos por validaci\'on cruzada. Saque inicial de
+        cada parte tomado del Smart Tagging.
+\end{itemize}
+
+\paragraph{Validaci\'on legal: dejar un partido fuera en IDSSE degradado (7 pliegues).}
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+ & \texttt{spellF1} & \texttt{macroF1} \\
+\midrule
+Baseline (m\'as cercano + voto $\pm$2\,s) & 0.191 & 0.439 \\
+v1 & 0.190 & 0.619 \\
+\textbf{v2} (coste cambio 10, coste muerto 40) & \textbf{0.481} & \textbf{0.863} \\
+\bottomrule
+\end{tabular}
+\end{center}
+La v2 supera al baseline en los 7 partidos (0.42--0.56 frente a 0.15--0.25).
+
+\paragraph{Desplazamiento de dominio detectado y corregido sin etiquetas.} Al comparar la
+distribuci\'on de cada caracter\'istica entre el partido del reto y IDSSE degradado: (1) el ruido de
+posici\'on independiente por frame inflaba la velocidad de los jugadores ($\sim$2\,m/s), y se
+sustituy\'o por ruido suave en el tiempo; (2) las velocidades absolutas difieren entre
+proveedores, y se normalizan por la mediana de cada partido; (3) se quitaron las posiciones
+extremas de cada equipo (dependen del portero). Con ello la v2 en el partido del reto pasa de
+388 posesiones de 6.7\,s y 59\,\% de \lab{D} a 317 posesiones de 11.1\,s y 45\,\% de \lab{D},
+y reanuda el juego dentro de 49 de las 59 ventanas de bal\'on parado del Smart Tagging.
+
+\paragraph{Comprobaci\'on de formato en los 5 minutos p\'ublicos} (no se usa para elegir nada):
+v2 da 21 posesiones frente a 17 reales. El fichero se regenera byte a byte (mismo SHA-256).
+
+\paragraph{Riesgos abiertos.} El criterio de bal\'on muerto de DFL ($\sim$45\,\% del tiempo)
+puede no coincidir con el de Metrica; ninguna cifra externa est\'a medida sobre tracking autom\'atico
+real; el bal\'on sigue sin verse en el 41\,\% de los frames hasta tener M4.
+
+%======================================================================
+\section{Repositorios, papers y datasets de referencia}
+%======================================================================
+
+{\small
+\begin{longtable}{p{0.2\linewidth} p{0.36\linewidth} p{0.14\linewidth} p{0.2\linewidth}}
+\toprule
+\textbf{Recurso} & \textbf{Qu\'e aporta / resultado} & \textbf{Licencia} & \textbf{Uso} \\
+\midrule
+\endhead
+PathCRF\newline\url{github.com/hyunsungkim-ds/pathcrf} & Posesi\'on sin bal\'on, CRF + Viterbi.
+F1 eventos 75.7\,\% & MPL-2.0, pesos & M1, M2 \\
+Ball Radar\newline\url{github.com/pientist/ballradar} & Bal\'on y poseedor desde jugadores.
+85.9\,\% equipo sin bal\'on & Sin licencia & M2 (s\'olo referencia) \\
+databallpy\newline\url{github.com/alek050/databallpy} & Posesi\'on individual y de equipo con
+regla de control & MIT & M2 \\
+Vidal-Codina et al.\ 2022 (arXiv 2202.00804) & Eventos y reanudaciones por reglas; pases
+R\,94/P\,90\,\% & Paper CC-BY & M2, M3 \\
+Bischofberger et al.\ 2024 (PLOS ONE) & Umbrales de golpeo calibrados en Metrica & Paper & M2 \\
+Lang et al.\ 2022 (Sci.\ Rep.) & Vivo/muerto sin bal\'on, 92\,\% por frame & Paper CC-BY & M3 \\
+WASB-SBDT\newline\url{github.com/nttcom/WASB-SBDT} & Detecci\'on de bal\'on, F1 88.3 en c\'amara
+fija 1080p & MIT, pesos & M4 \\
+ELASTIC / ETSY & Sincronizar eventos y tracking (etiquetas en partidos externos) & MPL-2.0 /
+Apache-2.0 & M5 \\
+kloppy & Carga de IDSSE, Metrica, SkillCorner & BSD-3 & M5 \\
+\midrule
+IDSSE/DFL\newline(figshare 10.6084/m9.figshare.28196177) & 7 partidos, 25\,Hz, vivo/muerto y
+posesi\'on por frame & CC-BY 4.0 & M3, M5 \\
+Metrica sample-data & 3 partidos, mismo proveedor & Sin licencia formal & M5 \\
+SkillCorner open data & 10 partidos, 10\,fps, posesi\'on por frame & MIT & M5 \\
+\bottomrule
+\end{longtable}
+}
+
+%======================================================================
+\section{Estrategia de validaci\'on (sin hacer trampa)}
+%======================================================================
+
+\begin{enumerate}
+  \item \textbf{5 minutos p\'ublicos:} s\'olo comprobar alineaci\'on de frames, formato y que las
+        etiquetas significan lo que creemos. Nunca para elegir entre versiones.
+  \item \textbf{Partidos externos (IDSSE, Metrica):} selecci\'on de modelos e hiperpar\'ametros con la
+        misma m\'etrica, sobre datos degradados.
+  \item \textbf{Comprobaciones sin ground truth en el partido completo:} n\'umero de posesiones y
+        duraci\'on media plausibles; cada bal\'on parado del Smart Tagging deber\'ia caer en un paso
+        \lab{D}$\to$vivo; proporci\'on de tiempo vivo razonable.
+  \item \textbf{Bootstrap} (\texttt{--bootstrap 1000}) antes de dar por buena una diferencia.
+\end{enumerate}
+
+%======================================================================
+\section{Plan de trabajo}
+%======================================================================
+
+\begin{tabularx}{\linewidth}{l L l}
+\toprule
+Fase & Contenido & Estado \\
+\midrule
+0 & Cargador r\'apido del tracking con cach\'e; caracter\'isticas por frame & Hecho \\
+1 & v1: M1 + M3 heur\'istico + mantener due\~no en huecos (sin entrenar nada) & Hecho \\
+2 & M5: descargar IDSSE, degradarlo y montar validaci\'on con \texttt{spellF1} & Hecho \\
+3 & v2: M2 + M3 aprendidos (gradient boosting, ventanas estilo Lang) + M1 con costes por CV & Hecho \\
+4 & Adaptar PathCRF como se\~nal adicional sin bal\'on & Pendiente \\
+5 & M4: WASB sobre el v\'ideo (requiere GPU) & Bloqueado (sin GPU) \\
+6 & Repo p\'ublico propio, documento t\'ecnico, env\'io & Pendiente \\
+\bottomrule
+\end{tabularx}
+
+%======================================================================
+\section{Checklist final antes de enviar}
+%======================================================================
+
+\begin{itemize}[label=\todo]
+  \item CSV con 199\,319 filas, cabecera \texttt{frame,label}, pasa \texttt{validate\_submission.py}.
+  \item CSV y PDF nombrados \texttt{<nombre\_equipo>}.
+  \item Repo propio y p\'ublico; sin \texttt{data/}, sin cach\'es derivadas, sin v\'ideo.
+  \item Un solo comando regenera el CSV; comprobado por hash en una m\'aquina limpia.
+  \item Dependencias fijadas; semillas fijadas.
+  \item Documento t\'ecnico con las seis secciones exigidas, incluidos datasets externos (fuente,
+        qui\'en etiquet\'o, cu\'anto) y licencias.
+  \item Ning\'un hiperpar\'ametro elegido con los 5 minutos p\'ublicos; ning\'un dato humano del partido.
+  \item Ning\'un dato del reto enviado a servicios en la nube.
+  \item Formulario enviado antes del 17/11/2026 con cuenta de Google; equipo de 3--5 personas.
+\end{itemize}
+
+\end{document}
