@@ -27,10 +27,10 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
 from possession import features, idsse, train  # noqa: E402
+from possession.features_v3 import touch_features  # noqa: E402
 import decoder_exp  # noqa: E402
 import dose_exp  # noqa: E402
 import improve  # noqa: E402
-from team_exp import touch_features  # noqa: E402
 
 FOLDER = os.path.join(train.DATA_DIR, "external", "metrica")
 OUT = os.path.join(improve.OUT, "metrica")
@@ -98,9 +98,9 @@ def prepare(args):
     streams = np.random.default_rng([train.SEED, game, repeat]).spawn(2)
     players, ball = train.degrade(data, streams[0], lengths, 0.0)
     if gaps == "dead":
-        hidden = dose_exp.dead_mask(y, streams[1], lengths, dose_exp.GAP_GIVEN_ALIVE)
+        hidden = train.dead_mask(y, streams[1], lengths, train.GAP_GIVEN_ALIVE)
     else:
-        hidden = dose_exp.ball_mask(len(y), streams[1], lengths, share)
+        hidden = train.ball_mask(len(y), streams[1], lengths, share)
     ball[hidden] = np.nan
     out = dict(y=y, period=period)
     out["base"] = features.build(players, ball, team, period, tuple(data["pitch"]))[0]
@@ -121,17 +121,19 @@ def fit(arm):
     gaps = cfg.get("gaps", "uniform")
     blocks = cfg.get("blocks", ("base",))
     train_gaps = improve.GAPS if gaps == "mixed" else (gaps,)
-    pool = [improve.load_match(m, g, blocks) for g in train_gaps for m in idsse.MATCHES]
+    pool = [improve.load_match(m, g, blocks, d) for d in range(cfg.get("draws", 1))
+            for g in train_gaps for m in idsse.MATCHES]
     model = improve.Fitted(dict(cfg, _extra={}), pool, key, train.SEED)
+    detector = improve.fit_flips(pool, key, train.SEED) if cfg.get("change") else None
     with open(path, "wb") as handle:
-        pickle.dump(model, handle)
-    return model
+        pickle.dump((model, detector), handle)
+    return model, detector
 
 
 def run(arm):
     cfg = improve.ARMS[arm]
     blocks = cfg.get("blocks", ("base",))
-    model = fit(arm)
+    model, detector = fit(arm)
     with open(os.path.join(improve.OUT, "summary.json")) as handle:
         summary = json.load(handle)
     out = {}
@@ -144,7 +146,11 @@ def run(arm):
                     with np.load(os.path.join(OUT, "g{}_{}_{}.npz".format(game, repeat, gaps))) as f:
                         X, y, period = np.hstack([f[b] for b in blocks]), f["y"], f["period"]
                     lp = improve.log_p(model.proba(X)).astype(np.float64)
-                    path = improve.decode(lp, None, period, costs[0], 0.0, costs[2])
+                    logit = None
+                    if detector is not None:
+                        p = np.clip(detector.predict_proba(X)[:, 1], 1e-4, 1 - 1e-4)
+                        logit = np.log(p / (1 - p))
+                    path = improve.decode(lp, logit, period, costs[0], costs[1], costs[2])
                     s, m = train.score(y, path, period)
                     found = decoder_exp.spells(path, period)
                     spell.append(s)

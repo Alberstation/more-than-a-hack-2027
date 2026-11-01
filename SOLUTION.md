@@ -5,7 +5,7 @@ From the provided tracking to the submission file, in four commands. Python 3.12
 ```bash
 pip install -r requirements-solution.txt
 python possession/idsse.py          # downloads the 7 IDSSE/DFL open matches (CC-BY 4.0) to data/external/
-python possession/train.py          # degrades them, cross-validates, fits the model -> data/models/
+python possession/train_v3.py       # degrades them, fits the v3 model -> data/models/
 python possession/pipeline.py --out <team_name>.csv
 python evaluation/validate_submission.py <team_name>.csv
 ```
@@ -18,9 +18,11 @@ Everything generated (tracking caches, external data, the fitted model, submissi
 | `possession/atd.py` | reads the tactical ATD once into numpy arrays, cached |
 | `possession/idsse.py` | downloads IDSSE/DFL and converts it to the same arrays, with H/A/D per frame |
 | `possession/features.py` | per-frame features, identical for both sources, no player identities |
-| `possession/train.py` | degrades IDSSE to look like the challenge tracking, leave-one-match-out CV, final fit |
+| `possession/train.py` | degrades IDSSE to look like the challenge tracking, leave-one-match-out CV, v2 fit |
+| `possession/features_v3.py` | touch, team shape and control evidence added for v3 |
+| `possession/train_v3.py` | fits v3: 3 degradations of each match under 2 ball-gap patterns |
 | `possession/decode.py` | three-state H/A/D Viterbi with a cost per change of state |
-| `possession/pipeline.py` | v1 (hand-set evidence) and v2 (learned) predictions for the challenge match |
+| `possession/pipeline.py` | v1 (hand-set evidence), v2 and v3 (learned) predictions for the challenge match |
 
 What is fitted, and on what: only IDSSE (other games, allowed by RULES.md). The challenge match
 contributes input data only -- its tracking, Smart Tagging kickoffs, and the length of its ball

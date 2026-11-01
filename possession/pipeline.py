@@ -136,6 +136,34 @@ def predict_v2(game=GAME):
     return labels
 
 
+def predict_v3(game=GAME):
+    """v2's decoder on the v3 model: more evidence, trained on both ball-gap patterns."""
+    import pickle
+    from possession import features_v3, train, train_v3
+
+    with open(train_v3.MODEL_PATH, "rb") as handle:
+        bundle = pickle.load(handle)
+    players, ball, team = atd.load(game)
+    blocks = half_video_blocks(game)
+    period = np.zeros(len(ball), dtype=np.int8)
+    for half, first, last in blocks:
+        period[first:last + 1] = half
+    X = features_v3.build(players, ball, team, period, GAMES[game]["pitch"])
+    scores = train.log_proba(bundle["model"], X)
+
+    half_names = {1: "1st Half", 2: "2nd Half"}
+    kickoffs = kickoff_frames(game)
+    transitions = decode.transition_matrix(bundle["switch_cost"], bundle["dead_cost"])
+    labels = np.full(len(ball), "X", dtype="<U1")
+    for half, first, last in blocks:
+        block = scores[first:last + 1].copy()
+        kickoff = kickoffs.get(half_names[half])
+        if kickoff is not None and kickoff > first:
+            block[:kickoff - first, :2] = -1e6
+        labels[first:last + 1] = decode.STATES[decode.viterbi(block, transitions)]
+    return labels
+
+
 def set_piece_check(labels, game=GAME):
     """Share of Smart Tagging set pieces with a dead-to-alive restart inside their window.
 
@@ -169,12 +197,13 @@ def describe(labels, game=GAME):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--version", choices=("v1", "v2"), default="v2",
-                        help="v1: hand-set evidence; v2: model fitted on IDSSE (run train.py)")
+    parser.add_argument("--version", choices=("v1", "v2", "v3"), default="v3",
+                        help="v1: hand-set evidence; v2: model fitted on IDSSE (run train.py); "
+                             "v3: best model (run train_v3.py)")
     parser.add_argument("--out", help="default evaluation/results/possession_<version>.csv")
     args = parser.parse_args()
 
-    labels = predict_v2() if args.version == "v2" else predict()
+    labels = {"v1": predict, "v2": predict_v2, "v3": predict_v3}[args.version]()
     out = args.out or os.path.join(RESULTS_DIR, "possession_{}.csv".format(args.version))
     path = write_submission(out, labels)
     n, mean_s, share = describe(labels)

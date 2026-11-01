@@ -37,6 +37,10 @@ TRAIN_STRIDE = 5            # every 5th frame for fitting: neighbours are near-d
 PLAYER_DROP_SHARE = 0.07    # challenge tracking sees ~20.5 of 22 players
 POSITION_NOISE_M = 0.25
 NOISE_SMOOTHING_FRAMES = 25
+HARD_SHARE = 0.7            # share of gaps placed on a label change, when events are given
+GAP_GIVEN_DEAD = 0.75       # ball missing on frames v2 calls dead in the challenge match, no labels
+GAP_GIVEN_ALIVE = 0.127     # same, on frames v2 calls alive
+GAP_JITTER = 50             # frames; a real gap does not start exactly where the ball goes dead
 SWITCH_COSTS = (5.0, 10.0, 20.0, 40.0, 80.0)
 DEAD_COSTS = (2.5, 5.0, 10.0, 20.0, 40.0)
 HGB = dict(max_iter=300, learning_rate=0.08, max_leaf_nodes=63, min_samples_leaf=200,
@@ -56,6 +60,33 @@ def challenge_gap_profile():
     lengths = np.flatnonzero(edges == -1) - np.flatnonzero(edges == 1)
     graded = sum(last - first + 1 for _, first, last in half_video_blocks("BAR-ATH"))
     return lengths, lengths.sum() / graded
+
+
+def ball_mask(n, rng, lengths, share, events=None):
+    hidden = np.zeros(n, dtype=bool)
+    while hidden.mean() < share:
+        length = int(rng.choice(lengths))
+        if events is not None and rng.random() < HARD_SHARE:
+            start = max(0, int(rng.choice(events)) - int(rng.integers(0, length + 1)))
+        else:
+            start = int(rng.integers(0, max(1, n - length)))
+        hidden[start:start + length] = True
+    return hidden
+
+
+def dead_mask(y, rng, lengths, alive_share):
+    """Gaps that follow the dead-ball stretches, up to GAP_JITTER frames out of step with them."""
+    n = len(y)
+    dead = y == 2
+    hidden = np.zeros(n, dtype=bool)
+    for state, share in ((dead, GAP_GIVEN_DEAD), (~dead, alive_share)):
+        while hidden[state].mean() < share:
+            length = int(rng.choice(lengths))
+            start = int(rng.integers(0, max(1, n - length)))
+            frames = np.arange(start, min(n, start + length))
+            shift = int(rng.integers(-GAP_JITTER, GAP_JITTER + 1))
+            hidden[frames[state[np.clip(frames + shift, 0, n - 1)]]] = True
+    return hidden
 
 
 def degrade(data, rng, gap_lengths, missing_share):

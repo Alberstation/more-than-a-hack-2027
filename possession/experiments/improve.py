@@ -22,7 +22,6 @@ from concurrent.futures import ProcessPoolExecutor
 
 import numba
 import numpy as np
-from scipy.ndimage import uniform_filter1d
 from sklearn.ensemble import HistGradientBoostingClassifier
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -30,8 +29,8 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
 from possession import features, idsse, train  # noqa: E402
+from possession.features_v3 import control_features, shape_features, touch_features  # noqa: E402
 import dose_exp  # noqa: E402
-from team_exp import touch_features  # noqa: E402
 
 OUT = os.path.join(train.DATA_DIR, "experiments", "improve")
 EVENTS = os.path.join(train.DATA_DIR, "external", "idsse_events")
@@ -66,6 +65,8 @@ ARMS = {
     "change": dict(blocks=("base", "touch"), change=True),
     "self_train": dict(self_train=True),
     "mixed_all": dict(gaps="mixed", blocks=BLOCKS),
+    "mixed_all3": dict(gaps="mixed", blocks=BLOCKS, draws=3),
+    "mixed_change3": dict(gaps="mixed", blocks=BLOCKS, change=True, draws=3),
     "ctrl_all": dict(labels="ctrl", blocks=BLOCKS),
     "ctrl_dead": dict(labels="ctrl", gaps="dead"),
     "dead_all": dict(gaps="dead", blocks=BLOCKS),
@@ -128,94 +129,28 @@ def control_labels(match_id, y, period):
     return out
 
 
-# -- extra evidence ----------------------------------------------------------------------------
-
-def shape_features(players, team, period, fps=FPS):
-    """Identity-free team shape, home side's point of view."""
-    players = players.astype(np.float64)
-    right = features.home_attacks_right(players, team, period)
-    length = float(np.nanmax(players[..., 0]))
-    px = np.where(right[:, None], players[:, :, 0], length - players[:, :, 0])
-    py = players[:, :, 1]
-    f = {}
-    q = {}
-    for name, cols in (("home", team == 0), ("away", team == 1)):
-        x, y_ = px[:, cols], py[:, cols]
-        seen = np.sum(~np.isnan(x), axis=1)
-        filled = np.where(np.isnan(x), np.inf, x)
-        order = np.sort(filled, axis=1)
-        pick = lambda share: order[np.arange(len(x)), np.clip((seen * share).astype(int), 0, x.shape[1] - 1)]
-        q[name] = [pick(s) for s in (0.1, 0.5, 0.9)]
-        for s, v in zip(("q10", "q50", "q90"), q[name]):
-            f["{}_{}".format(s, name)] = np.where(seen > 3, v, np.nan)
-        spread_x = np.nanmax(x, axis=1, initial=-1e9) - np.nanmin(x, axis=1, initial=1e9)
-        spread_y = np.nanmax(y_, axis=1, initial=-1e9) - np.nanmin(y_, axis=1, initial=1e9)
-        f["box_" + name] = np.where(seen > 3, spread_x * spread_y, np.nan)
-        centre = np.where(seen > 0, np.sum(np.where(np.isnan(x), 0, x), axis=1) / np.maximum(seen, 1), np.nan)
-        vel = np.full(len(x), np.nan)
-        vel[12:-12] = (centre[24:] - centre[:-24]) * fps / 24
-        f["advance_" + name] = features.centred_mean(vel, 12)
-    f["home_final_third"] = np.nansum(px[:, team == 0] > 2 * length / 3, axis=1).astype(np.float64)
-    f["away_final_third"] = np.nansum(px[:, team == 1] < length / 3, axis=1).astype(np.float64)
-    f["line_gap"] = f["q90_home"] - f["q10_away"]
-    for name in ("home_final_third", "away_final_third", "line_gap"):
-        f[name + "_c50"] = features.centred_mean(f[name], 50)
-    return np.column_stack(list(f.values())).astype(np.float32)
-
-
-def control_features(players, ball, team):
-    """Retention and pass chains, with `unknown` kept apart from `nothing happened`."""
-    dx = players[:, :, 0] - ball[:, None, 0]
-    dy = players[:, :, 1] - ball[:, None, 1]
-    dist = np.sqrt(dx * dx + dy * dy).astype(np.float64)
-    known = ~np.isnan(ball[:, 0])
-    filled = np.where(np.isnan(dist), np.inf, dist)
-    slot = np.argmin(filled, axis=1)
-    near = filled[np.arange(len(ball)), slot] < 2.5
-    held = np.where(known & near, slot, -1)
-    side = np.where(held >= 0, team[np.maximum(held, 0)], -1).astype(np.float64)
-    side[side < 0] = np.nan
-    side_last = features.forward_fill(side)
-    pass_ = {0: np.zeros(len(ball)), 1: np.zeros(len(ball))}
-    frames = np.flatnonzero(held >= 0)
-    if len(frames) > 1:
-        a, b = held[frames[:-1]], held[frames[1:]]
-        same = (a != b) & (team[a] == team[b]) & (frames[1:] - frames[:-1] < 75)
-        for t in (0, 1):
-            pass_[t][frames[1:][same & (team[b] == t)]] = 1
-    f = {}
-    for w in (50, 125):
-        for t, name in ((0, "home"), (1, "away")):
-            f["chain_{}_c{}".format(name, w)] = uniform_filter1d(pass_[t], 2 * w + 1) * (2 * w + 1)
-        f["chain_diff_c{}".format(w)] = f["chain_home_c{}".format(w)] - f["chain_away_c{}".format(w)]
-    change = np.r_[False, np.nan_to_num(np.diff(side_last)) != 0]
-    since = features.frames_since_valid(np.where(change, 1.0, np.nan))
-    f["retained"] = np.where(side_last == 0, 1.0, -1.0) * np.fmin(np.nan_to_num(since, nan=500.0), 500)
-    f["retained"][np.isnan(side_last)] = np.nan
-    f["seen_c50"] = uniform_filter1d(known.astype(np.float64), 101)
-    return np.column_stack(list(f.values())).astype(np.float32)
-
-
 # -- preparation -------------------------------------------------------------------------------
 
-def cache_path(match_id, gaps):
-    return os.path.join(OUT, "matches", "{}_{}.npz".format(match_id, gaps))
+def cache_path(match_id, gaps, draw=0):
+    tail = "_d{}".format(draw) if draw else ""
+    return os.path.join(OUT, "matches", "{}_{}{}.npz".format(match_id, gaps, tail))
 
 
 def prepare(args):
-    index, match_id, gaps, lengths, share = args
-    path = cache_path(match_id, gaps)
+    index, match_id, gaps, lengths, share, draw = args
+    path = cache_path(match_id, gaps, draw)
     if os.path.isfile(path):
         return path
     data = idsse.load(match_id)
     y = np.array([train.CODE[v] for v in data["labels"]], dtype=np.int8)
     period, pitch, team = data["period"], tuple(data["pitch"]), data["team"]
-    streams = np.random.default_rng([train.SEED, index]).spawn(3)
+    seed = [train.SEED, index, draw] if draw else [train.SEED, index]
+    streams = np.random.default_rng(seed).spawn(3)
     players, ball = train.degrade(data, streams[0], lengths, 0.0)
     if gaps == "dead":
-        hidden = dose_exp.dead_mask(y, streams[1], lengths, dose_exp.GAP_GIVEN_ALIVE)
+        hidden = train.dead_mask(y, streams[1], lengths, train.GAP_GIVEN_ALIVE)
     else:
-        hidden = dose_exp.ball_mask(len(y), streams[1], lengths, share)
+        hidden = train.ball_mask(len(y), streams[1], lengths, share)
     ball[hidden] = np.nan
     out = dict(y_raw=y, y_ctrl=control_labels(match_id, y, period), period=period)
     for suffix, side in (("", team), ("_swap", 1 - team)):
@@ -228,8 +163,8 @@ def prepare(args):
     return path
 
 
-def load_match(match_id, gaps, blocks):
-    with np.load(cache_path(match_id, gaps)) as f:
+def load_match(match_id, gaps, blocks, draw=0):
+    with np.load(cache_path(match_id, gaps, draw)) as f:
         return dict(X=np.hstack([f[b] for b in blocks]), X_swap=np.hstack([f[b + "_swap"] for b in blocks]),
                     y_raw=f["y_raw"], y_ctrl=f["y_ctrl"], period=f["period"])
 
@@ -332,12 +267,15 @@ def train_arm(arm):
     tests = {g: {m: load_match(m, g, blocks) for m in idsse.MATCHES} for g in GAPS}
     matches = tests.get(gaps)
     train_gaps = GAPS if gaps == "mixed" else (gaps,)
+    extra_draws = [(m, g, load_match(m, g, blocks, d)) for d in range(1, cfg.get("draws", 1))
+                   for g in train_gaps for m in idsse.MATCHES]
     for f, held in enumerate(idsse.MATCHES):
         path = os.path.join(folder, held + ".npz")
         if os.path.isfile(path):
             continue
         t = time.time()
         pool = [tests[g][m] for g in train_gaps for m in idsse.MATCHES if m != held]
+        pool += [x for m, _, x in extra_draws if m != held]
         fold_cfg = dict(cfg)
         extra = {}
         if cfg.get("early"):
@@ -472,7 +410,7 @@ if __name__ == "__main__":
     if stage == "prep":
         lengths, share, real = dose_exp.gap_profile()
         assert real
-        jobs = [(i, m, g, lengths, share) for i, m in enumerate(idsse.MATCHES) for g in GAPS]
+        jobs = [(i, m, g, lengths, share, d) for d in range(3) for i, m in enumerate(idsse.MATCHES) for g in GAPS]
         with ProcessPoolExecutor(4) as pool:
             for path in pool.map(prepare, jobs):
                 print("ready", os.path.basename(path), flush=True)

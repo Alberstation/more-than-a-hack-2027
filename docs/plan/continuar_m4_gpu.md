@@ -9,10 +9,10 @@ M4 (recuperar el balón del vídeo) queda descartado: no superó la puerta 1. La
 
 | # | Tarea | Necesita | Estado |
 |---|---|---|---|
-| 1 | Generar el CSV de v2 como respaldo | Datos del reto | Generado y validado; no se sube aún |
+| 1 | Generar el CSV | Datos del reto | v3 generado y validado; v2 queda de respaldo; no se sube aún |
 | 2 | Consultas a la organización (ver abajo) | Nada | Ninguna pendiente |
 | 3 | **Puerta 1:** dosis-respuesta, `dose_exp.py` | IDSSE y ATD | Hecho: no superada |
-| 4 | Medir `mixed_all` con 3 degradaciones e integrar en `train.py` y `pipeline.py` | IDSSE y ATD | Siguiente paso |
+| 4 | Medir `mixed_all` con 3 degradaciones e integrar como v3 | IDSSE y ATD | Hecho: `mixed_all3`, ver `BITACORA.md` |
 | 5 | Techo de PathCRF | Permiso para ejecutar código externo | Sin ejecutar |
 | 6 | Repositorio público y documento técnico | Todo lo anterior | Empezar antes del 10/11 |
 
@@ -82,7 +82,8 @@ una, costes medianos de IDSSE y etiquetas construidas desde sus eventos.
 | Variante | IDSSE huecos uniformes | IDSSE huecos en muerto | Metrica uniformes | Metrica en muerto | Decisión |
 |---|---|---|---|---|---|
 | `all_feats` (toque, forma y control) | +0,049 (7/7) | +0,050 (7/7) | +0,050 (6/6) | +0,052 (6/6) | Aceptada |
-| `mixed_all` (`all_feats` + entrenar con ambos huecos) | +0,048 (7/7) | +0,076 (7/7) | +0,044 (6/6) | +0,073 (6/6) | **Elegida** |
+| `mixed_all` (`all_feats` + entrenar con ambos huecos) | +0,048 (7/7) | +0,076 (7/7) | +0,044 (6/6) | +0,073 (6/6) | Superada por `mixed_all3` |
+| `mixed_all3` (`mixed_all` con 3 degradaciones) | +0,066 (7/7) | +0,087 (7/7) | +0,060 (6/6) | +0,084 (6/6) | **Elegida, es v3** |
 | `dead_all` (solo huecos en muerto) | −0,010 (2/7) | +0,083 (7/7) | −0,009 (2/6) | +0,078 (6/6) | Rechazada: depende del patrón real |
 | `ctrl_labels` (etiquetas de control) | −0,070 (0/7) | −0,077 (0/7) | −0,062 | −0,060 | Rechazada, ver abajo |
 

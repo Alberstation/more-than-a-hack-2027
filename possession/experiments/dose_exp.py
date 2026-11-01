@@ -23,6 +23,7 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 from possession import features, idsse, train  # noqa: E402
+from possession.train import GAP_GIVEN_ALIVE, ball_mask, dead_mask  # noqa: E402
 
 OUT = os.path.join(train.DATA_DIR, "experiments", "dose_exp.json")
 
@@ -31,10 +32,6 @@ MISSING_SHARE = 0.41        # published in DATA.md, used only as the stand-in's 
 ERROR_M = 1.5               # assumed error of a recovered ball, metres
 ERROR_FRAMES = 5
 OUTLIER_SHARE = 0.03        # assumed share of recovered frames that are false detections
-HARD_SHARE = 0.7            # share of gaps placed on a label change in the `hard` arm
-GAP_GIVEN_DEAD = 0.75       # ball missing on frames v2 calls dead in the challenge match, no labels
-GAP_GIVEN_ALIVE = 0.127     # same, on frames v2 calls alive
-GAP_JITTER = 50             # frames; a real gap does not start exactly where the ball goes dead
 GRID = [(s, d) for s in (5.0, 10.0, 20.0) for d in (20.0, 40.0, 80.0)]
 
 # name: (ball missing after recovery, recovered ball is noisy, where the gaps go)
@@ -64,33 +61,6 @@ def gap_profile():
         rng = np.random.default_rng(train.SEED)
         lengths = np.maximum(rng.lognormal(np.log(25), 1.3, 5000).astype(int), 1)
         return lengths, MISSING_SHARE, False
-
-
-def ball_mask(n, rng, lengths, share, events=None):
-    hidden = np.zeros(n, dtype=bool)
-    while hidden.mean() < share:
-        length = int(rng.choice(lengths))
-        if events is not None and rng.random() < HARD_SHARE:
-            start = max(0, int(rng.choice(events)) - int(rng.integers(0, length + 1)))
-        else:
-            start = int(rng.integers(0, max(1, n - length)))
-        hidden[start:start + length] = True
-    return hidden
-
-
-def dead_mask(y, rng, lengths, alive_share):
-    """Gaps that follow the dead-ball stretches, up to GAP_JITTER frames out of step with them."""
-    n = len(y)
-    dead = y == 2
-    hidden = np.zeros(n, dtype=bool)
-    for state, share in ((dead, GAP_GIVEN_DEAD), (~dead, alive_share)):
-        while hidden[state].mean() < share:
-            length = int(rng.choice(lengths))
-            start = int(rng.integers(0, max(1, n - length)))
-            frames = np.arange(start, min(n, start + length))
-            shift = int(rng.integers(-GAP_JITTER, GAP_JITTER + 1))
-            hidden[frames[state[np.clip(frames + shift, 0, n - 1)]]] = True
-    return hidden
 
 
 def recover(hidden, share, rng):
