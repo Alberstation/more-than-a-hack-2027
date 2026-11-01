@@ -32,6 +32,8 @@ oficial. Ningún número se eligió con los 5 minutos públicos.
 | Modelo actual, equipo real | 0,909 | 0,957 | Oráculo: el equipo H/A es el límite |
 | + señales de toque | 0,488 | 0,869 | Mejora dentro del ruido |
 | + señales de toque + detector de cambios | 0,496 | 0,871 | 5 partidos suben y 2 bajan; no integrado |
+| Igual, entrenando con 3 degradaciones por partido | 0,514 | 0,876 | Mejor resultado; sube en 7 de 7 frente a 1 degradación |
+| 3 degradaciones, sin detector | 0,506 | 0,874 | Las degradaciones aportan más que el detector |
 | Sin perder el balón (sin degradar) | 0,614 | 0,926 | Techo aproximado de M4 |
 
 - Ampliando el grid de costes, el modelo actual da 0,482 con `(switch=10, dead=80)`.
@@ -39,8 +41,11 @@ oficial. Ningún número se eligió con los 5 minutos públicos.
   menos de 2 s y son las que se escapan.
 - Los 0,614 son un techo, no una previsión: WASB no recuperará todo el balón.
 - El oráculo de equipo usa información que ningún modelo tiene, así que 0,91 tampoco es alcanzable.
-- La prueba con 3 degradaciones por partido no había terminado al escribir esto:
-  `python possession/experiments/change_exp.py 3`.
+- Mejores costes con 3 degradaciones: `(switch=5, gain=2, dead=40)`. Se eligieron con los mismos
+  7 partidos, así que el 0,514 es algo optimista.
+- Pendiente de integrar en `train.py` y `pipeline.py`: señales de toque y 3 degradaciones por
+  partido. El detector es opcional. Tarda unos 3 min por partido y aporta 0,009, dentro del ruido.
+- El volumen de datos sale de `python possession/experiments/change_exp.py 3`.
 
 ## Riesgo abierto
 
