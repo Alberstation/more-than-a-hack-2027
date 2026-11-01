@@ -45,7 +45,8 @@ oficial. Ningún número se eligió con los 5 minutos públicos.
   7 partidos, así que el 0,514 es algo optimista.
 - Pendiente de integrar en `train.py` y `pipeline.py`: señales de toque y 3 degradaciones por
   partido. El detector es opcional. Tarda unos 3 min por partido y aporta 0,009, dentro del ruido.
-- El volumen de datos sale de `python possession/experiments/change_exp.py 3`.
+- Para repetir la prueba: `python possession/experiments/change_exp.py 3` y después
+  `python possession/experiments/decode_exp.py oof_change_k3`.
 
 ## Riesgo abierto
 
