@@ -1,6 +1,6 @@
 """Tracking in, H / A / D per frame out: evidence per frame, then one Viterbi pass per half.
 
-    python possession/pipeline.py                     # writes evaluation/results/possession_v1.csv
+    python possession/pipeline.py                     # writes evaluation/results/possession_v4.csv
     python possession/pipeline.py --out my_team.csv
 
 Three changes over starter/baseline.py, each one a line of the improvement plan (docs/plan):
