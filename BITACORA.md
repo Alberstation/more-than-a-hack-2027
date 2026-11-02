@@ -1,7 +1,7 @@
 # Bitácora
 
 Registro compacto de todos los cambios e intentos, para continuar sin releer el proyecto.
-Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/` (local) y `docs/plan/continuar_m4_gpu.md`.
+Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/` y `data/experiments/improve_live/` (locales).
 
 ## Estado
 
