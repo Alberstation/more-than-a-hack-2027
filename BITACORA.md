@@ -24,6 +24,7 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 - El CSV debe regenerarse idéntico (regla 3). Entrega en CPU. Sin fechas salvo que se pidan.
 - Aceptar: +0,03 pareado, ≥5/7 partidos, sin empeorar en Metrica. Ruido por partido: ~0,04.
 - Medir cambios pequeños solo contra `mixed_all3` y `ref`, sin repetir todo el banco.
+- Medir solo contra `ctrl`. `raw` contradice CHALLENGE.md (exige control); las cifras `raw` de abajo son históricas.
 
 ## Versiones
 
@@ -57,7 +58,7 @@ Diferencias de spellF1 frente a `ref` contra etiquetas `raw`: huecos uniformes /
 | PathCRF | Sin ejecutar | Bloqueado | Entorno bloquea código externo; pide identidades y portero, que el reto no da |
 | ELASTIC | Sin ejecutar | Sin sentido | Solo afina `ctrl`, rechazadas |
 | Vídeo y audio | Sin ejecutar | Bloqueado | No hay `.mp4` en este PC |
-| Coste H/A 14 / 20 (cobertura de definición, solo decodificador, v3 guardado) | Contra `raw` −0,014/−0,008 y −0,022/−0,020 (0–1/7); contra `ctrl` +0,042/+0,058 y +0,062/+0,074 (7/7); Metrica eventos hasta −0,005, control +0,023 a +0,037 | **Pendiente del usuario** | No pasa la puerta contra `raw`; declarar π y coste antes de mirar. Barrido en `data/experiments/hedge/`; falta repetir en producción |
+| Coste H/A 14 / 20 (cobertura de definición, solo decodificador, v3 guardado) | Contra `raw` −0,014/−0,008 y −0,022/−0,020 (0–1/7); contra `ctrl` +0,042/+0,058 y +0,062/+0,074 (7/7); Metrica eventos hasta −0,005, control +0,023 a +0,037 | Sustituido | Resuelto en v4 con coste 40 contra `ctrl` (ver revisión abajo). Barrido en `data/experiments/hedge/` |
 | Saerens EM y prior H/A, incluso real | ≤ +0,004 | Fuera | Sin ganancia |
 | Fusión por duración | < 3 s pierde 0,04 en Metrica | Fuera | Dominada por subir el coste |
 | Mezcla `raw`+`ctrl` | Misma frontera (una degradación `ctrl`) | Fuera | Sin cobertura extra |
@@ -83,6 +84,28 @@ Diagnóstico: `possession/experiments/gt_review.py`; solo agregados y sin elegir
 | 40 | 0,495/0,534 | 0,680/0,716 | 0,542/0,575 | 0,666/0,705 |
 
 Cautela: entrenamiento y test comparten simulador, y el simulador sigue más tranquilo que el reto (velocidad en muerto: mediana 1,45 frente a 2,7 m/s; p90 3,85 frente a 9,5). No se afina más para no ajustarlo a la ventana pública. `metrica_exp.py run ctrl_mixed_all3` con balón congelado ya no hace falta: la medida con balón móvil lo sustituye.
+
+### Diagnósticos sobre v4
+
+Fuera de pliegue, balón móvil, costes (40, 40); huecos uniformes / en muerto. Script `possession/experiments/oracle_exp.py`, salida `improve_live/oracle.json`.
+
+| Oráculo | `ctrl` | `raw` |
+|---|---|---|
+| v4 | 0,680/0,716 | 0,495/0,534 |
+| Tramos de v4, etiqueta real mayoritaria | 0,800/0,833 | 0,510/0,542 |
+| Tramos reales, voto de v4 | 0,829/0,859 | 0,555/0,588 |
+| Tramos reales, probabilidad media de v4 | 0,878/0,904 | 0,655/0,690 |
+| Muerto real forzado | 0,741/0,752 | 0,543/0,574 |
+
+Lectura contra `ctrl`: fronteras y etiquetas pesan parecido (+0,15 y +0,12). Agregar la probabilidad por tramo supera al voto (+0,05), lo que apoya el rescore de tramos; su techo sobre los cortes de v4 es +0,12. Muerto real: +0,06.
+
+Curva de aprendizaje (`learning_exp.py`, `improve_live/learning/curve.json`): `mixed_all3` con 2, 4, 6 y 7 partidos IDSSE (3 subconjuntos), medido en Metrica, costes (40, 40). `ctrl`: 0,634/0,661 → 0,664/0,691 → 0,669/0,701 → 0,666/0,705; `raw`: 0,524/0,550 → 0,542/0,572 → 0,546/0,580 → 0,542/0,575. Satura desde 4–6 partidos; los 7 reproducen la medida anterior. Más partidos del mismo tipo baja de prioridad.
+
+Rescore de tramos sin entrenar (`rescore_exp.py`, `improve_live/rescore.json`), solo `ctrl`: cortar con Viterbi más barato y dar a cada tramo la clase de mayor probabilidad media (o log-verosimilitud). IDSSE +0,003 (5/7) / −0,001 (0–1/7); Metrica +0,001 / 0,000. La validación anidada elige siempre coste 40: sobresegmentar no ayuda, y sobre los cortes de Viterbi el voto agregado coincide casi siempre con su etiqueta. **Fuera.** El margen del oráculo (+0,12 en etiquetas) no sale de reagregar las mismas probabilidades: hace falta evidencia nueva (contexto largo, HGB de dos etapas, o rescore entrenado con agregados por tramo).
+
+HGB de dos etapas (`stack_exp.py`, `improve_live/stack/`), solo `ctrl`: etapa 1 `mixed_all3` anidada (42 ajustes con 5 partidos), etapa 2 HGB sobre probabilidades en ventanas ±1/5/15/60 s, laterales 5/15 s y agregados del tramo, entrenada con `ctrl` y aumentada con H/A intercambiados. IDSSE −0,004 (2/7) / −0,013 (1/7); Metrica −0,021 / −0,041; costes elegidos (20, 40) y (20, 20). **Fuera.** Mismo patrón que reentrenar con `ctrl`: aprende la aproximación `ctrl` de IDSSE y no transfiere a Metrica. Además la etapa 1 interna (5 partidos) es más débil que la de test (6), lo que desajusta las probabilidades.
+
+Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/external/skillcorner`. Sin formularios: solo fuentes de descarga directa.
 
 ## Hechos útiles
 
@@ -110,9 +133,9 @@ Cautela: entrenamiento y test comparten simulador, y el simulador sigue más tra
 
 Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.md`. Los rangos de ganancia son estimaciones sin medir.
 
-1. Decisiones del usuario: formulario PFF y consulta a organizadores (Metrica, PFF, definición).
-2. Diagnósticos: oráculo de tramos y etiquetas; curva de aprendizaje; dosis v3 con balón de 3 y 5 m y con equipo de reanudación.
-3. Según diagnósticos: HGB de dos etapas, rescore de tramos, reanudaciones sin balón, lote de features H−A, SkillCorner (20 partidos, MIT), codificador de conjuntos.
+1. Decisión del usuario: enviar el formulario PFF (acepta términos a su nombre; solo útil si la curva de aprendizaje crece). Sin consulta a organizadores: RULES.md permite datos externos abiertos y CHALLENGE.md fija la definición.
+2. Diagnósticos cerrados (oráculo y curva). La dosis de balón y reanudación se salta: no hay vídeo y el muerto real solo da +0,06.
+3. Rescore sin entrenar y HGB de dos etapas probados y fuera. Quedan lote de features H−A y codificador de conjuntos. Reanudaciones sin balón y SkillCorner bajan (muerto real +0,06; curva saturada).
 4. Repositorio público y documento técnico.
 5. Comprobar la regeneración en una máquina limpia.
 6. Subir el CSV solo cuando se decida; la entrega oficial es el 17/11/2026.
