@@ -43,10 +43,10 @@ class Encoder(nn.Module):
     def forward(self, players, ball):
         seen = players[..., 7:8]
         h = self.phi(players) * seen                                     # (B, T, 2, S, H)
-        count = seen.sum(dim=3).clamp(min=1)
-        mean = h.sum(dim=3) / count
+        present = seen.sum(dim=3)
+        mean = h.sum(dim=3) / present.clamp(min=1)
         top = torch.where(seen > 0, h, torch.full_like(h, -1e4)).amax(dim=3)
-        top = torch.where(count > 0.5, top, torch.zeros_like(top))
+        top = torch.where(present > 0.5, top, torch.zeros_like(top))   # an empty team pools to zero
         near = torch.where(seen > 0, -players[..., 6:7] * 10, torch.full_like(seen, -1e4))
         attn = (torch.softmax(near, dim=3) * h).sum(dim=3)
         z = torch.cat([mean, top, attn], dim=-1).flatten(2)             # (B, T, 2 * 3H)

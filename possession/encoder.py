@@ -101,10 +101,12 @@ def pooled(w, players):
         p = players[s:s + CHUNK]
         seen = p[..., 7:8]
         h = gelu(linear(w, "phi.2", gelu(linear(w, "phi.0", p)))) * seen
-        count = np.maximum(seen.sum(axis=2), 1)
-        mean = h.sum(axis=2) / count
+        present = seen.sum(axis=2)
+        mean = h.sum(axis=2) / np.maximum(present, 1)
         top = np.where(seen > 0, h, -1e4).max(axis=2)
-        top = np.where(count > 0.5, top, 0.0)
+        # A team with no player seen (players leaving after the whistle) pools to zero; its -1e4
+        # padding would otherwise swamp GroupNorm over the whole half.
+        top = np.where(present > 0.5, top, 0.0)
         near = np.where(seen > 0, -p[..., 6:7] * 10, -1e4)
         near = np.exp(near - near.max(axis=2, keepdims=True))
         attn = (near / near.sum(axis=2, keepdims=True) * h).sum(axis=2)

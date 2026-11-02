@@ -171,10 +171,10 @@ def predict_v3(game=GAME, model_path=None):
     return labels
 
 
-def predict_v5(game=GAME):
-    """v4's HGB mixed with the set encoder (seeds averaged), then the same Viterbi per half."""
+def proba_v5(game=GAME):
+    """(p_hgb, p_encoder, blocks): v5's two sets of per-frame class probabilities."""
     import pickle
-    from possession import encoder, features_v3, train, v5
+    from possession import encoder, features_v3, v5
 
     with open(v5.HGB_PATH, "rb") as handle:
         hgb = pickle.load(handle)["model"]
@@ -186,13 +186,21 @@ def predict_v5(game=GAME):
     pitch = GAMES[game]["pitch"]
     p_hgb = hgb.predict_proba(features_v3.build(players, ball, team, period, pitch))
     p_enc = encoder.proba([encoder.load(p) for p in v5.ENCODER_PATHS], players, ball, team, period, pitch)
+    return p_hgb, p_enc, blocks
+
+
+def predict_v5(game=GAME):
+    """v4's HGB on control labels mixed with the set encoder (seeds averaged), one Viterbi per half."""
+    from possession import v5
+
+    p_hgb, p_enc, blocks = proba_v5(game)
     p = (1 - v5.ENCODER_WEIGHT) * p_hgb + v5.ENCODER_WEIGHT * p_enc
     scores = np.log(np.clip(p, 1e-4, 1.0))
 
     half_names = {1: "1st Half", 2: "2nd Half"}
     kickoffs = kickoff_frames(game)
     transitions = decode.transition_matrix(v5.SWITCH_COST, v5.DEAD_COST)
-    labels = np.full(len(ball), "X", dtype="<U1")
+    labels = np.full(len(scores), "X", dtype="<U1")
     for half, first, last in blocks:
         block = scores[first:last + 1].copy()
         kickoff = kickoffs.get(half_names[half])
