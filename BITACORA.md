@@ -16,7 +16,8 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 - **Reproducibilidad:** dos procesos separados dan el mismo modelo; el CSV se regenera idéntico en local. Falta máquina limpia.
 - **Estimación corregida:** las cifras CV y Metrica de arriba usan balón muerto congelado, que no ocurre en el reto. Con balón muerto en movimiento, v3 da CV 0,478/0,556 y Metrica 0,514/0,596 (costes 5, 40).
 - **Reproducibilidad v4:** predicciones idénticas al brazo medido (diferencia máxima 0,0) y CSV igual byte a byte en dos ejecuciones de `pipeline.py`.
-- **Verdad de referencia:** `ctrl` pasa a ser la principal (definición y 5 min públicos); `raw` queda como contraste. v4 usa costes (40, 40), decididos contra `ctrl`.
+- **Verdad de referencia:** solo `ctrl` (definición y 5 min públicos); `raw` ya no se mide. v4 usaba costes (40, 40), decididos contra `ctrl`.
+- **v5 frente a v4, contra `ctrl`:** IDSSE 0,767/0,779 frente a 0,690/0,721 (7/7); Metrica 0,672/0,693 frente a 0,669/0,697 (empate). Frente a su HGB solo: +0,065/+0,044 IDSSE, +0,031/+0,033 Metrica.
 
 ## Reglas
 
@@ -124,6 +125,21 @@ Fallo del codificador en el reto (`error_review.py`, solo agregados): tras el pi
 
 Errores que quedan en la ventana pública (entender, no ajustar): 10/17 posesiones bien; fallan posesiones H muy cortas (0,8, 1,3 y 3,5 s) dentro de tramos A, que v5 trata como toques, y las A vecinas quedan fusionadas. v5 da 3,2–3,3 posesiones por minuto vivo frente a 4,23 de la ventana; en IDSSE da 0,89–0,90 veces el ritmo de `ctrl`. Es decir, la verdad del reto conserva posesiones más cortas que nuestra aproximación `ctrl`.
 
+Posesiones cortas (`short_review.py`, solo agregados). Duraciones: ventana pública 12 % < 2 s y 24 % de 2–4 s (n 17); IDSSE `raw` 30 % y 23 %; `ctrl` 6 % y 14 %. Recall de v5 en IDSSE contra `ctrl` (IoU ≥ 0,5): < 2 s 21 %, 2–4 s 52 %, 4–8 s 68–71 %, 8–16 s 83–85 %, > 16 s 91–92 %. En las cortas perdidas, p(equipo real) ≈ 0,45: el modelo duda, no es solo el coste. En la ventana, las dos < 2 s tienen p(real) 0,07: el modelo ve al otro equipo, coherente con `ctrl`, que borra toques de < 1,5 s. Coste 20: una posesión de 1 s necesita p ≈ 0,83 de media. spellF1 pesa igual cada posesión y la pérdida por frame pesa por duración: las cortas pesan poco en entrenamiento. Literatura: PathCRF (arXiv 2602.12080, mismos datos IDSSE, 5 partidos) usa set attention + temporal + CRF con transiciones dinámicas: F1 65,3 sin CRF, 73,1 con Viterbi, 75,7 con CRF aprendido; precisión de equipo por frame 92,4 %. Siguientes candidatos: pérdida ponderada por posesión y transiciones aprendidas.
+
+Variantes del codificador (semilla 2027, `encoder_train.py <root> 2027 <variante>`, `variant_score.py`, `improve_live/variants.json`), frente al codificador base de la misma semilla, ambos mezclados con `ctrl_mixed_all3`, peso/costes/ganancia anidados, solo `ctrl`:
+
+| Variante | IDSSE | Metrica | Recall < 2 s / 2–4 s |
+|---|---|---|---|
+| base | 0,768/0,788 | 0,676/0,695 | 19 %/47 % · 21 %/53 % |
+| `w1` (peso por posesión, α 1) | −0,003 (3/7) / −0,007 (3/7) | +0,008/+0,004 | 18 %/45 % · 19 %/50 % |
+| `w05` (α 0,5) | −0,003 (4/7) / −0,006 (2/7) | +0,011/+0,008 | 16 %/48 % · 19 %/51 % |
+| `trans` (logit de cambio en el coste) | +0,001 (2/7) / −0,007 (1/7) | −0,008/+0,004 | 20 %/50 % · 20 %/50 % |
+
+**Las tres fuera**: dentro de ±0,01 y el recall de las cortas no se mueve. Con pérdida ponderada la validación sube los costes a 40 y compensa. Lectura: las posesiones cortas no se pierden por cómo se pesa la pérdida ni por el decodificador, sino porque el tracking no da evidencia suficiente para ellas (p ≈ 0,45).
+
+Recall de v5 según balón visible en la posesión (`short_review.py ball`, IDSSE, contra `ctrl`), huecos uniformes / en muerto, balón < 20 % → > 80 % de la posesión: < 2 s 20 % → 21 % / 11 % → 27 %; 2–4 s 42 % → 57 % / 38 % → 50 %; 4–8 s 59 % → 75 % / 52 % → 72 %; 8–16 s 78 % → 85 % / 69 % → 86 %; > 16 s 91–96 % sin diferencia. p(equipo real) en < 2 s con balón: 0,53–0,57. **El balón explica +10–20 puntos en 2–16 s, pero las < 2 s se pierden aun viéndolo**: su límite no es el balón. Hipótesis sin comprobar: parte de las `ctrl` < 2 s son artefactos de alinear eventos con frames y no se pueden aprender.
+
 Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/external/skillcorner`. Sin formularios: solo fuentes de descarga directa.
 
 ## Hechos útiles
@@ -141,11 +157,32 @@ Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/externa
 - `sample_weight` de unos cambia los árboles de HGB; `train_v3.py` lo pasa para coincidir con lo medido.
 - `train.py`: su early stopping no actúa (`n_iter_`=300). Sin efecto en v3, que usa `early_stopping=False`.
 - Entorno: `.venv` Python 3.12 con `requirements-solution.txt`; `numba` y `lightgbm` solo para experimentos. RTX 4060, 16 hilos, 15,7 GB.
+- Reto: tras el pitido del descanso el vídeo sigue ~80 s con 0–2 jugadores; hasta 24 pistas locales a la vez (p99 16). Todo modelo debe tolerar equipos vacíos y más de 20 pistas.
+- Datos: solo fuentes de descarga directa, sin formularios ni peticiones (decisión del usuario). PFF queda fuera. SkillCorner (MIT) descargado y sin usar: la curva satura.
+- Entrenar y medir contra `ctrl`. Entrenar con `ctrl` falló en el HGB de dos etapas (Metrica −0,02/−0,04), pero funciona en el codificador: el fallo era del modelo, no de las etiquetas.
+- `BallPossession` de DFL: sin definición pública localizada (README de IDSSE no la da; el artículo de Bassek et al. no se pudo leer).
+
+### Literatura (revisada 2026-11-02)
+
+- **A favor del codificador:** PathCRF (Kim et al., arXiv 2602.12080, código `hyunsungkim-ds/pathcrf`) usa los mismos 7 partidos IDSSE (5 de entrenamiento): set attention por equipo + módulo temporal + CRF. Ablaciones: F1 65,3 sin CRF, 73,1 con Viterbi fijo, 75,7 con CRF de transiciones dinámicas; separar interacciones dentro/entre equipos 68,2 → 75,7; 25 fps 77,2 frente a 75,7 a 5 fps. Equipo por frame 92,4 %. Usa tracking limpio con balón. Borghesi, Costa, Morra y Lamberti (ESWA 2023): TCN + capas invariantes a permutación, posesión 86,2 % (+7,3 sobre reglas), vivo/muerto 89,2 %. Kim et al. (KDD 2023, `pientist/ballradar`) y TranSPORTmer (ACCV 2024): Set Transformers para poseedor y estado de juego.
+- **Matiza:** Grinsztajn et al. (NeurIPS 2022): los árboles siguen ganando en tabular medio; coherente con que la mezcla HGB + red sea lo mejor. Ninguna fuente evalúa tracking automático degradado ni desglosa posesiones cortas; con 40 % de balón ausente no hay precedente. Lo que da a PathCRF su ganancia (transiciones aprendidas) aquí no aportó.
+- **Decodificación:** la segmentación temporal trata la sobre- y subsegmentación con priors de duración (Constraint-Aware Decoding, arXiv 2605.10149; Lea et al., arXiv 1602.02995).
+
+### Investigación de posesiones cortas (2026-11-02, `reports/Posesiones cortas en tracking.md`)
+
+- **Diagnóstico:** las cortas se pierden por falta de evidencia de equipo (p ≈ 0,45), no por pérdida ni decodificador; ningún coste o prior de duración las recupera sin inventar otras. Casi todo lo publicado en segmentación combate el exceso de segmentos, no la falta de cortos.
+- **DFL `BallPossession`:** sin algoritmo ni duración mínima públicos; Bassek et al. 2025 solo dice "definido por el jugador que controla el balón" (TRACAB Gen5, operadores en directo, catálogo DFL v5.1 no público). En `raw` el 30 % dura < 2 s: no hay mínimo efectivo. databallpy discrepa del campo en ~10 % de frames vivos de un partido Sportec.
+- **Definiciones:** Wyscout, Opta y FIFA EFI ("In Contest"): un toque sin control no cambia posesión. Link y Hoernig 2017: toque por aceleración ≥ 4 m/s², kappa de control 0,67 (humanos 0,72). Vidal-Codina 2022: zona 0,5–1 m, ganancia solo con cambio de dirección o velocidad del balón, duelo con 2+ rivales a 1 m. Yamamoto 2023 (J1, 95 partidos): posesión individual media 2,49 s; 11,3 % de las de equipo < 1 s.
+- **Ruido de reloj:** Biermann 2023: error mediano 0,52 s de los pases del proveedor; con desfase constante (como el nuestro) solo el 49,9 % queda a < 0,5 s; con sincronización por trayectoria 70–81 %. Vidal-Codina: eventos Sportec hasta > 10 s desplazados. ELASTIC 2025: 88,4 % al frame exacto, 95 % a < 1 s. Acuerdo humano en bordes de posesión: IoU 0,72–0,78.
+- **Balón inferido:** Ball Radar (KDD 2023) sin balón: 3,66 m, equipo 85,9 %, jugador 64,7 %; con 20 % de balón visible: 1,31 m, jugador 93,1 %. En IDSSE, balón regresado + reglas da F1 48,4 frente a 75,7 de PathCRF. TranSPORTmer (283 partidos LaLiga): 2,57–2,71 m. Peral 2025 necesita vídeo.
+- **Cambio de proveedor:** PathCRF Sportec→K League F1 49,2 (73,9 en el mismo proveedor); pierde más recall que precisión, como nosotros. Crang et al. 2025: tracking de retransmisión, RMSE de posición 1,7–16,4 m según proveedor.
+- **Código reutilizable:** PathCRF (`hyunsungkim-ds/pathcrf`, MPL-2.0 según GitHub; trae eventos DFL sincronizados), databallpy, ELASTIC (licencia no declarada), Ball Radar (sin licencia: no reutilizable).
 
 ## Código
 
 - Producción: `possession/train_v4.py` (usa `train_v3.py` con `moving=True`), `features_v3.py`, `pipeline.py` (`--version v5` por defecto). v5: `v5.py` (constantes y HGB con `labels="ctrl"`), `encoder.py`, `control.py`, `models/*.npz`.
-- Codificador (entorno aparte `C:\scripts\hackathon_barsa\venv-torch`, torch 2.11 cu128): `experiments/encoder_data.py` → `encoder_train.py <improve_live> <seed>` → `encoder_export.py` → `encoder_score.py`.
+- Codificador (entorno aparte `C:\scripts\hackathon_barsa\venv-torch`, torch 2.11 cu128): `experiments/encoder_data.py` → `encoder_train.py <improve_live> <seed> [w05|w1|trans]` → `encoder_export.py` → `encoder_score.py` (`pick` da las constantes de v5) y `variant_score.py`.
+- Diagnósticos v4/v5: `oracle_exp.py`, `learning_exp.py`, `rescore_exp.py`, `stack_exp.py`, `geom_exp.py`, `error_review.py` (ventana pública, ritmo, confianza), `short_review.py` (duraciones y recall por duración).
 - Banco: `possession/experiments/improve.py` (brazos), `decoder_exp.py` (MBR y Smart Tagging), `metrica_exp.py` (ensayo), `dose_exp.py` (puerta M4).
 - Datos locales: `data/tactical/`, `data/external/{idsse,idsse_events,metrica}`. Metrica se descarga de `metrica-sports/sample-data`.
 
@@ -153,9 +190,11 @@ Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/externa
 
 Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.md`. Los rangos de ganancia son estimaciones sin medir.
 
-1. Decisión del usuario: enviar el formulario PFF (acepta términos a su nombre; solo útil si la curva de aprendizaje crece). Sin consulta a organizadores: RULES.md permite datos externos abiertos y CHALLENGE.md fija la definición.
+1. Sin decisiones abiertas sobre datos: sin formularios (PFF fuera) y sin consulta a organizadores (RULES.md y CHALLENGE.md lo resuelven).
 2. Diagnósticos cerrados (oráculo y curva). La dosis de balón y reanudación se salta: no hay vídeo y el muerto real solo da +0,06.
-3. Mejoras opcionales cerradas: rescore, dos etapas y lote H−A fuera; codificador dentro. v5 elegida sobre la mezcla con el HGB `raw` (empate dentro del ruido; coherencia con `ctrl`). Reanudaciones sin balón y SkillCorner bajan (muerto real +0,06; curva saturada).
+3. Mejoras opcionales cerradas: rescore, dos etapas y lote H−A fuera; codificador dentro. v5 elegida sobre la mezcla con el HGB `raw` (empate dentro del ruido; coherencia con `ctrl`). Reanudaciones sin balón y SkillCorner bajan (muerto real +0,06; curva saturada). Pérdida ponderada y transiciones aprendidas fuera.
+3b. Hecho: recall de posesiones cortas según el balón visible (abajo). El balón ayuda poco; las < 2 s se pierden incluso con balón.
+3c. Investigación de posesiones cortas: `reports/Posesiones cortas en tracking.md` (notas en `research_notes/Posesiones cortas en tracking/`). Siguientes diagnósticos, para más adelante: (1) auditar las `ctrl` < 4 s con el balón limpio de IDSSE (¿toque del equipo, duelo, eventos de ambos en la ventana?); (2) sensibilidad de `ctrl` a desplazar el reloj de eventos ±0,5 y ±1 s. Según salga: etiqueta de control solo con tracking (si son artefactos) o variables de toque a 25 Hz (si son reales).
 4. Repositorio público y documento técnico.
 5. Comprobar la regeneración en una máquina limpia.
 6. Subir el CSV solo cuando se decida; la entrega oficial es el 17/11/2026.
