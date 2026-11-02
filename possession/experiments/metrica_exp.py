@@ -95,6 +95,9 @@ def prepare(args):
         return path
     data = load_game(game)
     y, period, team = data["y"], data["period"], data["team"]
+    if improve.LIVE_DEAD:
+        moved = np.random.default_rng([train.SEED, game, repeat, 1])
+        data = dict(data, ball=train.moving_dead_ball(data["players"], data["ball"], y, moved))
     streams = np.random.default_rng([train.SEED, game, repeat]).spawn(2)
     players, ball = train.degrade(data, streams[0], lengths, 0.0)
     if gaps == "dead":

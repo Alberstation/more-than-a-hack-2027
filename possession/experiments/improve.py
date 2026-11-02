@@ -32,7 +32,9 @@ from possession import features, idsse, train  # noqa: E402
 from possession.features_v3 import control_features, shape_features, touch_features  # noqa: E402
 import dose_exp  # noqa: E402
 
-OUT = os.path.join(train.DATA_DIR, "experiments", "improve")
+LIVE_DEAD = bool(os.environ.get("LIVE_DEAD"))   # the ball moves through stoppages, tests included
+FROZEN_OUT = os.path.join(train.DATA_DIR, "experiments", "improve")
+OUT = FROZEN_OUT + "_live" if LIVE_DEAD else FROZEN_OUT
 EVENTS = os.path.join(train.DATA_DIR, "external", "idsse_events")
 FPS = 25
 
@@ -72,6 +74,9 @@ ARMS = {
     "dead_all": dict(gaps="dead", blocks=BLOCKS),
     "ctrl_dead_all": dict(labels="ctrl", gaps="dead", blocks=BLOCKS),
     "ctrl_mixed_all": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS),
+    "ctrl_mixed_all3": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS, draws=3),
+    "frozen_all3": dict(gaps="mixed", blocks=BLOCKS, draws=3, frozen=True),
+    "ctrl_frozen_all3": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS, draws=3, frozen=True),
     "ctrl_mixed_change": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS, change=True),
 }
 
@@ -131,9 +136,9 @@ def control_labels(match_id, y, period):
 
 # -- preparation -------------------------------------------------------------------------------
 
-def cache_path(match_id, gaps, draw=0):
+def cache_path(match_id, gaps, draw=0, root=None):
     tail = "_d{}".format(draw) if draw else ""
-    return os.path.join(OUT, "matches", "{}_{}{}.npz".format(match_id, gaps, tail))
+    return os.path.join(root or OUT, "matches", "{}_{}{}.npz".format(match_id, gaps, tail))
 
 
 def prepare(args):
@@ -146,6 +151,8 @@ def prepare(args):
     period, pitch, team = data["period"], tuple(data["pitch"]), data["team"]
     seed = [train.SEED, index, draw] if draw else [train.SEED, index]
     streams = np.random.default_rng(seed).spawn(3)
+    if LIVE_DEAD:
+        data = dict(data, ball=train.moving_dead_ball(data["players"], data["ball"], y, streams[2]))
     players, ball = train.degrade(data, streams[0], lengths, 0.0)
     if gaps == "dead":
         hidden = train.dead_mask(y, streams[1], lengths, train.GAP_GIVEN_ALIVE)
@@ -163,8 +170,8 @@ def prepare(args):
     return path
 
 
-def load_match(match_id, gaps, blocks, draw=0):
-    with np.load(cache_path(match_id, gaps, draw)) as f:
+def load_match(match_id, gaps, blocks, draw=0, root=None):
+    with np.load(cache_path(match_id, gaps, draw, root)) as f:
         return dict(X=np.hstack([f[b] for b in blocks]), X_swap=np.hstack([f[b + "_swap"] for b in blocks]),
                     y_raw=f["y_raw"], y_ctrl=f["y_ctrl"], period=f["period"])
 
@@ -267,14 +274,18 @@ def train_arm(arm):
     tests = {g: {m: load_match(m, g, blocks) for m in idsse.MATCHES} for g in GAPS}
     matches = tests.get(gaps)
     train_gaps = GAPS if gaps == "mixed" else (gaps,)
-    extra_draws = [(m, g, load_match(m, g, blocks, d)) for d in range(1, cfg.get("draws", 1))
+    # A frozen arm fits on the still-ball matches and is tested on the moving ones.
+    fit_root = FROZEN_OUT if cfg.get("frozen") else None
+    fit_on = {g: {m: load_match(m, g, blocks, 0, fit_root) if fit_root else tests[g][m] for m in idsse.MATCHES}
+              for g in train_gaps}
+    extra_draws = [(m, g, load_match(m, g, blocks, d, fit_root)) for d in range(1, cfg.get("draws", 1))
                    for g in train_gaps for m in idsse.MATCHES]
     for f, held in enumerate(idsse.MATCHES):
         path = os.path.join(folder, held + ".npz")
         if os.path.isfile(path):
             continue
         t = time.time()
-        pool = [tests[g][m] for g in train_gaps for m in idsse.MATCHES if m != held]
+        pool = [fit_on[g][m] for g in train_gaps for m in idsse.MATCHES if m != held]
         pool += [x for m, _, x in extra_draws if m != held]
         fold_cfg = dict(cfg)
         extra = {}
@@ -367,7 +378,7 @@ def grid_job(args):
 def score(arms):
     jobs = [(a, m, g) for a in arms for m in idsse.MATCHES for g in GAPS
             if os.path.isfile(os.path.join(OUT, "oof", a, m + ".npz"))]
-    with ProcessPoolExecutor(14) as pool:
+    with ProcessPoolExecutor(6) as pool:
         done = list(pool.map(grid_job, jobs))
     results = {}
     for arm, held, gap, table in done:
@@ -388,7 +399,11 @@ def score(arms):
                 summary["{}|{}|{}".format(arm, gap, label)] = dict(
                     spell=float(np.mean(folds)), macro=float(np.mean(macro)), folds=[round(float(v), 4) for v in folds],
                     count=float(np.mean(counts)), costs=picked)
-    with open(os.path.join(OUT, "summary.json"), "w") as handle:
+    path = os.path.join(OUT, "summary.json")
+    if os.path.isfile(path):
+        with open(path) as handle:
+            summary = dict(json.load(handle), **summary)
+    with open(path, "w") as handle:
         json.dump(summary, handle, indent=1)
     return summary
 

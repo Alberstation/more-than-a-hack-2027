@@ -136,12 +136,19 @@ def predict_v2(game=GAME):
     return labels
 
 
-def predict_v3(game=GAME):
+def predict_v4(game=GAME):
+    """The v3 pipeline on the model trained with a moving dead ball."""
+    from possession import train_v4
+
+    return predict_v3(game, train_v4.MODEL_PATH)
+
+
+def predict_v3(game=GAME, model_path=None):
     """v2's decoder on the v3 model: more evidence, trained on both ball-gap patterns."""
     import pickle
     from possession import features_v3, train, train_v3
 
-    with open(train_v3.MODEL_PATH, "rb") as handle:
+    with open(model_path or train_v3.MODEL_PATH, "rb") as handle:
         bundle = pickle.load(handle)
     players, ball, team = atd.load(game)
     blocks = half_video_blocks(game)
@@ -197,13 +204,13 @@ def describe(labels, game=GAME):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--version", choices=("v1", "v2", "v3"), default="v3",
+    parser.add_argument("--version", choices=("v1", "v2", "v3", "v4"), default="v4",
                         help="v1: hand-set evidence; v2: model fitted on IDSSE (run train.py); "
-                             "v3: best model (run train_v3.py)")
+                             "v3: frozen dead ball (run train_v3.py); v4: best model (run train_v4.py)")
     parser.add_argument("--out", help="default evaluation/results/possession_<version>.csv")
     args = parser.parse_args()
 
-    labels = {"v1": predict, "v2": predict_v2, "v3": predict_v3}[args.version]()
+    labels = {"v1": predict, "v2": predict_v2, "v3": predict_v3, "v4": predict_v4}[args.version]()
     out = args.out or os.path.join(RESULTS_DIR, "possession_{}.csv".format(args.version))
     path = write_submission(out, labels)
     n, mean_s, share = describe(labels)

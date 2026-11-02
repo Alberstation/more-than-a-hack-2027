@@ -40,6 +40,8 @@ NOISE_SMOOTHING_FRAMES = 25
 HARD_SHARE = 0.7            # share of gaps placed on a label change, when events are given
 GAP_GIVEN_DEAD = 0.75       # ball missing on frames v2 calls dead in the challenge match, no labels
 GAP_GIVEN_ALIVE = 0.127     # same, on frames v2 calls alive
+DEAD_HOLD_FRAMES = (25, 100)  # 1 to 4 s with one player, while play is stopped
+DEAD_PASS_M_PER_FRAME = 0.4   # 10 m/s at 25 fps, a typical pass between two of them, not fitted
 GAP_JITTER = 50             # frames; a real gap does not start exactly where the ball goes dead
 SWITCH_COSTS = (5.0, 10.0, 20.0, 40.0, 80.0)
 DEAD_COSTS = (2.5, 5.0, 10.0, 20.0, 40.0)
@@ -87,6 +89,36 @@ def dead_mask(y, rng, lengths, alive_share):
             shift = int(rng.integers(-GAP_JITTER, GAP_JITTER + 1))
             hidden[frames[state[np.clip(frames + shift, 0, n - 1)]]] = True
     return hidden
+
+
+def moving_dead_ball(players, ball, y, rng):
+    """The ball handed between players through dead stretches, on its way to the restart.
+
+    IDSSE and Metrica hold the ball still while play is stopped and the real tracker does not, so a
+    still ball tells a model that play is dead in a way the challenge never will.
+    """
+    out = ball.copy()
+    edges = np.diff(np.r_[0, (y == 2).astype(np.int8), 0])
+    for start, end in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
+        first, last = ball[max(start - 1, 0), :2], ball[min(end, len(y) - 1), :2]
+        size = end - start
+        path = np.zeros((size, 2))
+        at = 0
+        while at < size:
+            stop = min(size, at + int(rng.integers(*DEAD_HOLD_FRAMES)))
+            target = first + (at + stop) / (2 * size) * (last - first)
+            gap = np.hypot(*(players[start + at, :, :2] - target).T)
+            path[at:stop] = target
+            if not np.all(np.isnan(gap)):
+                carried = players[start + at:start + stop, int(np.nanargmin(gap)), :2]
+                path[at:stop] = np.where(np.isnan(carried), target, carried)
+            at = stop
+        now = first.astype(np.float64)
+        for i in range(size):
+            step = path[i] - now
+            now = now + step * min(1.0, DEAD_PASS_M_PER_FRAME / max(np.hypot(*step), 1e-6))
+            out[start + i, :2] = now
+    return out
 
 
 def degrade(data, rng, gap_lengths, missing_share):
