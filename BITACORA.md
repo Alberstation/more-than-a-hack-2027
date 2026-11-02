@@ -6,7 +6,8 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 ## Estado
 
 - **Reto:** H/A/D por frame, Barça–Athletic, 199.319 frames. Ranking `spellF1`, desempate `macroF1`.
-- **Mejor versión: v4** (`mixed_all3` con `LIVE_DEAD=1`, balón muerto móvil). `python possession/train_v4.py` y `python possession/pipeline.py --out <equipo>.csv`.
+- **Mejor versión y entrega por defecto: v5** = HGB de v4 entrenado con `ctrl` (`ctrl_mixed_all3`) mezclado con el codificador de conjuntos (3 semillas), w 0,75, Viterbi (20, 20). `python possession/idsse.py` (también baja los eventos), `python possession/v5.py` y `python possession/pipeline.py`. Pesos del codificador en `possession/models/` (git), inferencia NumPy float64 de un hilo; sin torch. CSV `possession_v5.csv`, SHA-256 `fa9d73de…1290f1`, idéntico en dos ejecuciones (50 s); 173 posesiones de 19,0 s, 48,2 % muerto, 52/59 balones parados. HGB idéntico al medido. 5 min públicos (solo comprobación): spellF1 0,637 como v4, macroF1 0,915.
+- **Versión anterior: v4** (`mixed_all3` con `LIVE_DEAD=1`, balón muerto móvil). `python possession/train_v4.py` y `python possession/pipeline.py --out <equipo>.csv`.
 - **CSV:** `evaluation/results/possession_v4.csv`, SHA-256 `e6a371b2…cc538e`; 212 posesiones de 15,8 s, 47,4 % muerto, 52/59 balones parados con reanudación. **Respaldos:** `possession_v3.csv` (`e034f5d7…dd72ce`) y `possession_v2.csv`, intactos.
 - **CV v3:** spellF1 0,556 (huecos uniformes) y 0,596 (en muerto), frente a 0,490 y 0,510 de `ref`.
 - **Metrica v3:** 0,601 y 0,643, frente a 0,541 y 0,558.
@@ -34,7 +35,8 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 | v1 | Viterbi H/A/D, hueco sin evidencia, muerto heurístico | Superada |
 | v2 | HGB, 46 características, IDSSE degradado, Viterbi (10, 40) | CV 0,4805; respaldo |
 | v3 | v2 + toque, forma y control (85 características), 3 degradaciones × 2 patrones de huecos, Viterbi (5, 40) | Respaldo |
-| **v4** | v3 entrenado con balón muerto móvil, Viterbi (40, 40) | Actual |
+| v4 | v3 entrenado con balón muerto móvil, Viterbi (40, 40) | Respaldo |
+| **v5** | HGB v4 con `ctrl` + codificador de conjuntos (3 semillas, w 0,75), Viterbi (20, 20) | Actual |
 
 Dominio corregido en v2: ruido suave, velocidades normalizadas por partido, sin posiciones extremas de equipo.
 
@@ -105,6 +107,19 @@ Rescore de tramos sin entrenar (`rescore_exp.py`, `improve_live/rescore.json`), 
 
 HGB de dos etapas (`stack_exp.py`, `improve_live/stack/`), solo `ctrl`: etapa 1 `mixed_all3` anidada (42 ajustes con 5 partidos), etapa 2 HGB sobre probabilidades en ventanas ±1/5/15/60 s, laterales 5/15 s y agregados del tramo, entrenada con `ctrl` y aumentada con H/A intercambiados. IDSSE −0,004 (2/7) / −0,013 (1/7); Metrica −0,021 / −0,041; costes elegidos (20, 40) y (20, 20). **Fuera.** Mismo patrón que reentrenar con `ctrl`: aprende la aproximación `ctrl` de IDSSE y no transfiere a Metrica. Además la etapa 1 interna (5 partidos) es más débil que la de test (6), lo que desajusta las probabilidades.
 
+Lote de geometría H−A (`geom_exp.py`, `improve_live/geom.json`, brazo `ctrl_geom3`, entrenado con `ctrl`): mínimo suave de distancias (1 y 3 m), llegada proyectada a 0,5 y 1 s, presión, Voronoi (todo el campo, tercios, junto al balón), rejilla 6×4 de ocupación H−A; 44 columnas. Frente a `ctrl_mixed_all3`: IDSSE −0,001/−0,005 (3/7), Metrica +0,004/+0,005. **Fuera**: el HGB ya saca esa señal de lo que tiene.
+
+Codificador de conjuntos (`encoder_data.py`, `encoder_train.py` en `C:\scripts\hackathon_barsa\venv-torch`, `encoder_score.py`; salida `improve_live/encoder.json`). DeepSets por equipo (media, máximo, atención por cercanía al balón) + TCN dilatada ±50 s a 5 pasos/s, 451 k parámetros, **entrenado con `ctrl`**, ambas vistas H/A, 3000 iteraciones, ~2 min por pliegue en la RTX 4060. Mezcla con v4 por un peso, peso y costes anidados. Solo `ctrl`:
+
+| Referencia | Brazo | IDSSE | Metrica |
+|---|---|---|---|
+| v4 actual (0,690/0,721; Metrica 0,669/0,697) | Codificador solo | +0,072/+0,053 (7/7) | +0,007/−0,007 |
+| | Mezcla (w 0,75; costes 28/20) | +0,081/+0,067 (7/7) | +0,014/+0,012 |
+| v4 con `ctrl` (0,702/0,735; Metrica 0,641/0,660) | Codificador solo | +0,059/+0,039 (7/7) | +0,036/+0,030 |
+| | Mezcla | +0,066/+0,053 (7/7) | +0,036/+0,035 |
+
+**Pasa la puerta** frente a las dos referencias. Semillas 2028 y 2029: mezcla frente a `ctrl_mixed_all3` +0,058/+0,055 y +0,057/+0,046 (7/7), Metrica +0,034/+0,032 y +0,025/+0,029. Promedio de 3 semillas: +0,065/+0,044 (7/7), Metrica +0,031/+0,033. Constantes de producción (`encoder_score.py pick`, media de 7 partidos × 2 huecos): w 0,75, (20, 20), 0,781; cima plana (±0,001). Inferencia NumPy frente a torch: diferencia máxima 1,1e-6, argmax 100 %. Etiquetas `ctrl` movidas a `possession/control.py` (reproducen las cacheadas); `improve.py` las importa.
+
 Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/external/skillcorner`. Sin formularios: solo fuentes de descarga directa.
 
 ## Hechos útiles
@@ -125,7 +140,8 @@ Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/externa
 
 ## Código
 
-- Producción: `possession/train_v4.py` (usa `train_v3.py` con `moving=True`), `features_v3.py`, `pipeline.py` (`--version v4` por defecto).
+- Producción: `possession/train_v4.py` (usa `train_v3.py` con `moving=True`), `features_v3.py`, `pipeline.py` (`--version v5` por defecto). v5: `v5.py` (constantes y HGB con `labels="ctrl"`), `encoder.py`, `control.py`, `models/*.npz`.
+- Codificador (entorno aparte `C:\scripts\hackathon_barsa\venv-torch`, torch 2.11 cu128): `experiments/encoder_data.py` → `encoder_train.py <improve_live> <seed>` → `encoder_export.py` → `encoder_score.py`.
 - Banco: `possession/experiments/improve.py` (brazos), `decoder_exp.py` (MBR y Smart Tagging), `metrica_exp.py` (ensayo), `dose_exp.py` (puerta M4).
 - Datos locales: `data/tactical/`, `data/external/{idsse,idsse_events,metrica}`. Metrica se descarga de `metrica-sports/sample-data`.
 
@@ -135,7 +151,7 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
 
 1. Decisión del usuario: enviar el formulario PFF (acepta términos a su nombre; solo útil si la curva de aprendizaje crece). Sin consulta a organizadores: RULES.md permite datos externos abiertos y CHALLENGE.md fija la definición.
 2. Diagnósticos cerrados (oráculo y curva). La dosis de balón y reanudación se salta: no hay vídeo y el muerto real solo da +0,06.
-3. Rescore sin entrenar y HGB de dos etapas probados y fuera. Quedan lote de features H−A y codificador de conjuntos. Reanudaciones sin balón y SkillCorner bajan (muerto real +0,06; curva saturada).
+3. Mejoras opcionales cerradas: rescore, dos etapas y lote H−A fuera; codificador dentro. v5 elegida sobre la mezcla con el HGB `raw` (empate dentro del ruido; coherencia con `ctrl`). Reanudaciones sin balón y SkillCorner bajan (muerto real +0,06; curva saturada).
 4. Repositorio público y documento técnico.
 5. Comprobar la regeneración en una máquina limpia.
 6. Subir el CSV solo cuando se decida; la entrega oficial es el 17/11/2026.

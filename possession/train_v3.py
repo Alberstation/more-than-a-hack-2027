@@ -19,7 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from games import DATA_DIR  # noqa: E402
 
-from possession import features_v3, idsse, train  # noqa: E402
+from possession import control, features_v3, idsse, train  # noqa: E402
 
 MODEL_PATH = os.path.join(DATA_DIR, "models", "hgb_v3.pkl")
 
@@ -37,7 +37,7 @@ def swap_y(y):
 
 def degraded_rows(args):
     """Every TRAIN_STRIDE-th frame of one degraded match, seen from both sides."""
-    index, match_id, gaps, draw, lengths, share, moving = args
+    index, match_id, gaps, draw, lengths, share, moving, labels = args
     data = idsse.load(match_id)
     y = np.array([train.CODE[v] for v in data["labels"]], dtype=np.int8)
     period, pitch, team = data["period"], tuple(data["pitch"]), data["team"]
@@ -54,12 +54,14 @@ def degraded_rows(args):
     s = train.TRAIN_STRIDE
     X = features_v3.build(players, ball, team, period, pitch)[::s]
     X_swap = features_v3.build(players, ball, 1 - team, period, pitch)[::s]
+    if labels == "ctrl":
+        y = control.control_labels(match_id, y, period)
     return np.concatenate([X, X_swap]), np.concatenate([y[::s], swap_y(y)[::s]])
 
 
-def main(moving=False, model_path=MODEL_PATH, switch_cost=SWITCH_COST):
+def main(moving=False, model_path=MODEL_PATH, switch_cost=SWITCH_COST, dead_cost=DEAD_COST, labels="raw"):
     lengths, share = train.challenge_gap_profile()
-    jobs = [(i, m, g, d, lengths, float(share), moving) for d in range(DRAWS) for g in GAPS
+    jobs = [(i, m, g, d, lengths, float(share), moving, labels) for d in range(DRAWS) for g in GAPS
             for i, m in enumerate(idsse.MATCHES)]
     with ProcessPoolExecutor(WORKERS) as pool:
         parts = list(pool.map(degraded_rows, jobs))
@@ -72,7 +74,7 @@ def main(moving=False, model_path=MODEL_PATH, switch_cost=SWITCH_COST):
     model = HistGradientBoostingClassifier(**dict(train.HGB, early_stopping=False)).fit(X, y, sample_weight=weight)
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     with open(model_path, "wb") as handle:
-        pickle.dump({"model": model, "switch_cost": switch_cost, "dead_cost": DEAD_COST}, handle)
+        pickle.dump({"model": model, "switch_cost": switch_cost, "dead_cost": dead_cost}, handle)
     print("->", os.path.relpath(model_path, ROOT))
 
 

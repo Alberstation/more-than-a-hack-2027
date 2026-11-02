@@ -1,6 +1,6 @@
 """Tracking in, H / A / D per frame out: evidence per frame, then one Viterbi pass per half.
 
-    python possession/pipeline.py                     # writes evaluation/results/possession_v4.csv
+    python possession/pipeline.py                     # writes evaluation/results/possession_v5.csv
     python possession/pipeline.py --out my_team.csv
 
 Three changes over starter/baseline.py, each one a line of the improvement plan (docs/plan):
@@ -171,6 +171,37 @@ def predict_v3(game=GAME, model_path=None):
     return labels
 
 
+def predict_v5(game=GAME):
+    """v4's HGB mixed with the set encoder (seeds averaged), then the same Viterbi per half."""
+    import pickle
+    from possession import encoder, features_v3, train, v5
+
+    with open(v5.HGB_PATH, "rb") as handle:
+        hgb = pickle.load(handle)["model"]
+    players, ball, team = atd.load(game)
+    blocks = half_video_blocks(game)
+    period = np.zeros(len(ball), dtype=np.int8)
+    for half, first, last in blocks:
+        period[first:last + 1] = half
+    pitch = GAMES[game]["pitch"]
+    p_hgb = hgb.predict_proba(features_v3.build(players, ball, team, period, pitch))
+    p_enc = encoder.proba([encoder.load(p) for p in v5.ENCODER_PATHS], players, ball, team, period, pitch)
+    p = (1 - v5.ENCODER_WEIGHT) * p_hgb + v5.ENCODER_WEIGHT * p_enc
+    scores = np.log(np.clip(p, 1e-4, 1.0))
+
+    half_names = {1: "1st Half", 2: "2nd Half"}
+    kickoffs = kickoff_frames(game)
+    transitions = decode.transition_matrix(v5.SWITCH_COST, v5.DEAD_COST)
+    labels = np.full(len(ball), "X", dtype="<U1")
+    for half, first, last in blocks:
+        block = scores[first:last + 1].copy()
+        kickoff = kickoffs.get(half_names[half])
+        if kickoff is not None and kickoff > first:
+            block[:kickoff - first, :2] = -1e6
+        labels[first:last + 1] = decode.STATES[decode.viterbi(block, transitions)]
+    return labels
+
+
 def set_piece_check(labels, game=GAME):
     """Share of Smart Tagging set pieces with a dead-to-alive restart inside their window.
 
@@ -204,13 +235,14 @@ def describe(labels, game=GAME):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--version", choices=("v1", "v2", "v3", "v4"), default="v4",
+    parser.add_argument("--version", choices=("v1", "v2", "v3", "v4", "v5"), default="v5",
                         help="v1: hand-set evidence; v2: model fitted on IDSSE (run train.py); "
-                             "v3: frozen dead ball (run train_v3.py); v4: best model (run train_v4.py)")
+                             "v3: frozen dead ball (run train_v3.py); v4: HGB with moving dead ball (run train_v4.py); "
+                             "v5: best, HGB on control labels mixed with the set encoder (run v5.py)")
     parser.add_argument("--out", help="default evaluation/results/possession_<version>.csv")
     args = parser.parse_args()
 
-    labels = {"v1": predict, "v2": predict_v2, "v3": predict_v3, "v4": predict_v4}[args.version]()
+    labels = {"v1": predict, "v2": predict_v2, "v3": predict_v3, "v4": predict_v4, "v5": predict_v5}[args.version]()
     out = args.out or os.path.join(RESULTS_DIR, "possession_{}.csv".format(args.version))
     path = write_submission(out, labels)
     n, mean_s, share = describe(labels)

@@ -6,7 +6,9 @@ the only labelled data this repository fits or selects anything on. See docs/pla
 
     python possession/idsse.py              # download all seven and build the caches
 
-Files go to data/external/idsse/ (gitignored). Arrays per match, the same layout as atd.load():
+Files go to data/external/idsse/ (gitignored), and the official event files to
+data/external/idsse_events/, which control.py turns into control labels for v5.
+Arrays per match, the same layout as atd.load():
     players (n, slots, 3)  x, y in metres from the corner, speed in m/s, NaN when absent
     ball    (n, 3)
     team    (slots,)       0 home, 1 away
@@ -25,6 +27,7 @@ sys.path.insert(0, ROOT)
 from games import DATA_DIR  # noqa: E402
 
 FOLDER = os.path.join(DATA_DIR, "external", "idsse")
+EVENTS_FOLDER = os.path.join(DATA_DIR, "external", "idsse_events")
 MATCHES = ("J03WMX", "J03WN1", "J03WPY", "J03WOH", "J03WQQ", "J03WOY", "J03WR9")
 FPS = 25
 CACHE_VERSION = 1
@@ -86,6 +89,12 @@ def _convert(match_id):
                 pitch=np.array([length, width]))
 
 
+def download_events(match_id):
+    from kloppy._providers.sportec import get_IDSSE_url
+
+    return _download(get_IDSSE_url(match_id, "event"), os.path.join(EVENTS_FOLDER, match_id + ".xml"))
+
+
 def load(match_id):
     """Arrays for one match, converted once and cached as .npz."""
     cache = os.path.join(FOLDER, "{}.v{}.npz".format(match_id, CACHE_VERSION))
@@ -97,6 +106,7 @@ def load(match_id):
 
 if __name__ == "__main__":
     for match in MATCHES:
+        download_events(match)
         data = load(match)
         labels = data["labels"]
         print("{}  {} frames  ball {:.1%}  H {:.1%}  A {:.1%}  D {:.1%}".format(
