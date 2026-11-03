@@ -61,7 +61,11 @@ def event_frames(match_id, y, period):
 
 def control_labels(match_id, y, period):
     """A spell of a team that plays no ball within the window is a touch: hand it back."""
-    frames, owners = event_frames(match_id, y, period)
+    return relabel(y, *event_frames(match_id, y, period))
+
+
+def relabel(y, frames, owners):
+    """control_labels from events already placed on frames (frames, owners as event_frames gives)."""
     window = int(CONTROL_WINDOW_S * FPS)
     out = y.copy()
     for _ in range(3):
