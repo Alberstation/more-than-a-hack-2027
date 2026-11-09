@@ -37,6 +37,7 @@ TRAIN_STRIDE = 5            # every 5th frame for fitting: neighbours are near-d
 PLAYER_DROP_SHARE = 0.07    # challenge tracking sees ~20.5 of 22 players
 POSITION_NOISE_M = 0.25
 NOISE_SMOOTHING_FRAMES = 25
+BALL_SMOOTH_FRAMES = 6.0      # Gaussian sigma matching the challenge ball (ball_kinematics.py); off by default
 HARD_SHARE = 0.7            # share of gaps placed on a label change, when events are given
 GAP_GIVEN_DEAD = 0.75       # ball missing on frames v2 calls dead in the challenge match, no labels
 GAP_GIVEN_ALIVE = 0.127     # same, on frames v2 calls alive
@@ -121,7 +122,9 @@ def moving_dead_ball(players, ball, y, rng):
     return out
 
 
-def degrade(data, rng, gap_lengths, missing_share):
+def degrade(data, rng, gap_lengths, missing_share, ball_smooth_frames=0.0, ball_noise_m=0.0,
+            ball_noise_frames=NOISE_SMOOTHING_FRAMES):
+    """Degraded (players, ball). The ball_* defaults leave every earlier draw and result unchanged."""
     players = data["players"].copy()
     ball = data["ball"].copy()
     n = len(ball)
@@ -146,7 +149,32 @@ def degrade(data, rng, gap_lengths, missing_share):
     # dead-ball signal.
     players[..., :2] += smooth_noise(rng, players[..., :2].shape, POSITION_NOISE_M)
     ball[:, :2] += smooth_noise(rng, ball[:, :2].shape, POSITION_NOISE_M / 2)
+    ball = blur_ball(ball, rng, ball_smooth_frames, ball_noise_m, ball_noise_frames)
     return players, ball
+
+
+def blur_ball(ball, rng, smooth_frames, noise_m, noise_frames=NOISE_SMOOTHING_FRAMES):
+    """A video ball detector's ball: kicks spread over smooth_frames (Gaussian sigma), extra drift.
+
+    The challenge ball changes velocity about three times more gently than IDSSE's and sits farther
+    from the players. Smoothing skips missing frames instead of spreading them. No draw when both
+    are zero, so the random stream stays as before.
+    """
+    if smooth_frames <= 0 and noise_m <= 0:
+        return ball
+    from scipy.ndimage import gaussian_filter1d
+    out = ball.copy()
+    xy = out[:, :2].astype(np.float64)
+    if smooth_frames > 0:
+        seen = np.isfinite(xy[:, 0])
+        weight = gaussian_filter1d(seen.astype(np.float64), smooth_frames, mode="nearest")
+        total = gaussian_filter1d(np.where(seen[:, None], xy, 0.0), smooth_frames, axis=0, mode="nearest")
+        with np.errstate(invalid="ignore", divide="ignore"):
+            xy = np.where(seen[:, None], total / weight[:, None], np.nan)
+    if noise_m > 0:
+        xy = xy + smooth_noise(rng, xy.shape, noise_m, noise_frames)
+    out[:, :2] = xy.astype(out.dtype)
+    return out
 
 
 def smooth_noise(rng, shape, std, frames=NOISE_SMOOTHING_FRAMES):
