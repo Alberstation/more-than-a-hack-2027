@@ -99,7 +99,7 @@ def prepare(args):
         moved = np.random.default_rng([train.SEED, game, repeat, 1])
         data = dict(data, ball=train.moving_dead_ball(data["players"], data["ball"], y, moved))
     streams = np.random.default_rng([train.SEED, game, repeat]).spawn(2)
-    players, ball = train.degrade(data, streams[0], lengths, 0.0)
+    players, ball = train.degrade(data, streams[0], lengths, 0.0, ball_smooth_frames=improve.BLUR_FRAMES)
     if gaps == "dead":
         hidden = train.dead_mask(y, streams[1], lengths, train.GAP_GIVEN_ALIVE)
     else:
@@ -110,6 +110,7 @@ def prepare(args):
     out["touch"] = touch_features(players, ball, team, period)[0]
     out["shape"] = improve.shape_features(players, team, period)
     out["control"] = improve.control_features(players, ball, team)
+    out["kick"] = improve.kick_features(players, ball, team)[0]
     np.savez(path, **out)
     return path
 
@@ -124,7 +125,8 @@ def fit(arm):
     gaps = cfg.get("gaps", "uniform")
     blocks = cfg.get("blocks", ("base",))
     train_gaps = improve.GAPS if gaps == "mixed" else (gaps,)
-    pool = [improve.load_match(m, g, blocks, d) for d in range(cfg.get("draws", 1))
+    root = improve.SHARP_OUT if cfg.get("sharp") else None
+    pool = [improve.load_match(m, g, blocks, d, root) for d in range(cfg.get("draws", 1))
             for g in train_gaps for m in idsse.MATCHES]
     model = improve.Fitted(dict(cfg, _extra={}), pool, key, train.SEED)
     detector = improve.fit_flips(pool, key, train.SEED) if cfg.get("change") else None

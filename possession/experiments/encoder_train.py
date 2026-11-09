@@ -13,6 +13,9 @@ or encoder_<variant>_s<seed>. Variants, fixed before any score was seen:
            every possession once, frame loss counts it by length.
   trans    a fourth output, the logit that possession changes hands here (H<->A within one step),
            written as logit_<gap> for a decoder whose switch cost moves with it.
+  kick     the 13 kick channels of encoder_data.py appended to the ball input.
+  sharp    fitted on the unblurred bench (<data> without its _blur suffix), tested on <data>: the
+           current recipe facing the blurred ball.
 Experiment only: not part of the submission environment.
 """
 import os
@@ -34,7 +37,13 @@ WIDTH = 128
 DILATIONS = (1, 2, 4, 8, 16, 32, 64, 128)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 WEIGHT_CAP = 25.0
-VARIANTS = {"base": {}, "w05": dict(alpha=0.5), "w1": dict(alpha=1.0), "trans": dict(trans=True)}
+VARIANTS = {"base": {}, "w05": dict(alpha=0.5), "w1": dict(alpha=1.0), "trans": dict(trans=True),
+            "kick": dict(kick=True), "sharp": dict(sharp=True)}
+KICK_CHANNELS = 13
+
+
+def ball_input(d, view, kick):
+    return np.concatenate([d["ball"][view], d["kick"][view]], axis=-1) if kick else d["ball"][view]
 
 
 class Encoder(nn.Module):
@@ -107,13 +116,14 @@ def train(files, seed, variant="base"):
         y = d["y_ctrl"][d["steps"]]
         labels.append(y)
         for view in (0, 1):
-            data.append([torch.from_numpy(d["players"][view]).to(DEVICE), torch.from_numpy(d["ball"][view]).to(DEVICE),
+            data.append([torch.from_numpy(d["players"][view]).to(DEVICE),
+                         torch.from_numpy(ball_input(d, view, cfg.get("kick"))).to(DEVICE),
                          torch.from_numpy((y if view == 0 else swap_y(y)).astype(np.int64)).to(DEVICE)])
     weights = spell_weights(labels, cfg["alpha"]) if "alpha" in cfg else [np.ones(len(y)) for y in labels]
     for i, item in enumerate(data):
         item.append(torch.from_numpy(weights[i // 2].astype(np.float32)).to(DEVICE))
         item.append(torch.from_numpy(changes(labels[i // 2])).to(DEVICE))
-    model = Encoder(outputs=4 if cfg.get("trans") else 3).to(DEVICE)
+    model = Encoder(ball=6 + (KICK_CHANNELS if cfg.get("kick") else 0), outputs=4 if cfg.get("trans") else 3).to(DEVICE)
     opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-2)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=2e-3, total_steps=ITERS)
     model.train()
@@ -151,6 +161,7 @@ def predict(model, path):
     views averaged. The change logit is None for a model without that output."""
     d = load(path)
     steps, period = d["steps"], d["period"]
+    kick = model.mix.in_features > 2 * 3 * model.phi[0].out_features + 6
     p_steps = np.zeros((len(steps), 3))
     logit = np.zeros(len(steps))
     for q in np.unique(period[steps]):
@@ -158,7 +169,7 @@ def predict(model, path):
         views, flips = [], []
         for view in (0, 1):
             players = torch.from_numpy(d["players"][view][r]).to(DEVICE).float()[None]
-            ball = torch.from_numpy(d["ball"][view][r]).to(DEVICE).float()[None]
+            ball = torch.from_numpy(ball_input(d, view, kick)[r]).to(DEVICE).float()[None]
             out = model(players, ball)[0].float()
             prob = torch.softmax(out[:3], dim=0).T.cpu().numpy()
             views.append(prob if view == 0 else prob[:, [1, 0, 2]])
@@ -182,6 +193,11 @@ def main():
         arm = "encoder" if seed == SEED else "encoder_s{}".format(seed)
     sets = os.path.join(out_root, "sets")
     name = lambda m, g, d: os.path.join(sets, "{}_{}_d{}.npz".format(m, g, d))
+    fit_sets = sets
+    if VARIANTS[variant].get("sharp"):
+        assert out_root.rstrip("/\\").endswith("_blur"), "sharp tests on a blurred bench"
+        fit_sets = os.path.join(out_root.rstrip("/\\")[:-len("_blur")], "sets")
+    fit_name = lambda m, g, d: os.path.join(fit_sets, "{}_{}_d{}.npz".format(m, g, d))
     folder = os.path.join(out_root, "oof", arm)
     os.makedirs(folder, exist_ok=True)
     for held in MATCHES:
@@ -189,7 +205,7 @@ def main():
         if os.path.isfile(target):
             continue
         t = time.time()
-        model = train([name(m, g, d) for m in MATCHES if m != held for g in GAPS for d in range(DRAWS)], seed, variant)
+        model = train([fit_name(m, g, d) for m in MATCHES if m != held for g in GAPS for d in range(DRAWS)], seed, variant)
         out = {}
         for g in GAPS:
             lp, _, logit = predict(model, name(held, g, 0))
@@ -198,7 +214,7 @@ def main():
                 out["logit_" + g] = logit
         np.savez(target, **out)
         print(arm, held, round(time.time() - t), "s", flush=True)
-    model = train([name(m, g, d) for m in MATCHES for g in GAPS for d in range(DRAWS)], seed, variant)
+    model = train([fit_name(m, g, d) for m in MATCHES for g in GAPS for d in range(DRAWS)], seed, variant)
     os.makedirs(os.path.join(out_root, "encoder_models"), exist_ok=True)
     torch.save(model.state_dict(), os.path.join(out_root, "encoder_models", arm + ".pt"))
     for game in (1, 2):

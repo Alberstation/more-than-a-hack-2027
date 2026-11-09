@@ -88,7 +88,7 @@ def metrica_probabilities(arm, cfg_blocks):
             model, _ = pickle.load(handle)
     else:
         cfg = improve.ARMS[arm]
-        root = improve.FROZEN_OUT if cfg.get("frozen") else None
+        root = improve.FROZEN_OUT if cfg.get("frozen") else improve.SHARP_OUT if cfg.get("sharp") else None
         pool = [improve.load_match(m, g, cfg_blocks, d, root) for d in range(cfg.get("draws", 1))
                 for g in improve.GAPS for m in idsse.MATCHES]
         model = improve.Fitted(dict(cfg, _extra={}), pool, "y_" + cfg.get("labels", "raw"), train.SEED)

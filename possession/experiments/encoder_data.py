@@ -6,6 +6,10 @@ One file per IDSSE match, gap pattern and draw, and per Metrica game, repeat and
 improve_live/sets/. Steps are every 5th frame of each period. Both views are stored: view 1 swaps
 the teams, so the encoder is trained symmetric as v4 is. Per player, in the home attacking frame:
 x, y, vx, vy, offset to the ball, distance to the ball, seen. Ball: x, y, vx, vy, seen, time since seen.
+Kick (features_kick.py, per view, over the 5 frames of each step): largest velocity change over
++-3/6/12 frames, a strike in the step, last and next striking side (+1 home, -1 away, 0 unknown),
+margin of the last strike, time since and to a strike, home share of strikes, change of direction.
+Read only by the encoder's `kick` variant.
 """
 import os
 import sys
@@ -17,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
-from possession import features, idsse, train  # noqa: E402
+from possession import features, features_kick, idsse, train  # noqa: E402
 import dose_exp  # noqa: E402
 import improve  # noqa: E402
 import metrica_exp  # noqa: E402
@@ -67,6 +71,24 @@ def tensors(players, ball, team, period, pitch, steps):
     return np.stack(out_p).astype(np.float16), np.stack(out_b).astype(np.float16)
 
 
+def kick_steps(players, ball, side, steps):
+    """(n_steps, 13) kick channels for one view, NaN-free."""
+    X, names = features_kick.kick_features(players, ball, side)
+    c = {k: X[:, i].astype(np.float64) for i, k in enumerate(names)}
+    window = lambda v, fill: np.max(np.stack([np.nan_to_num(v, nan=fill)[np.clip(steps + o, 0, len(v) - 1)]
+                                              for o in range(-2, 3)]), axis=0)
+    signed = lambda v: np.where(np.isnan(v), 0.0, 1.0 - 2.0 * v)       # 0 home -> +1, 1 away -> -1
+    cos = c["kick_cos6"][steps]
+    out = [window(c["kick_dv3"], 0) / 10, window(c["kick_dv6"], 0) / 10, window(c["kick_dv12"], 0) / 10,
+           window(np.where(c["strike_age"] == 0, 1.0, 0.0), 0),
+           signed(c["kick_side_last"][steps]), signed(c["kick_side_next"][steps]),
+           np.nan_to_num(c["kick_margin_last"][steps]) / 10,
+           np.nan_to_num(c["kick_age"][steps], nan=500) / 500, np.nan_to_num(c["kick_to_next"][steps], nan=250) / 250,
+           np.nan_to_num(c["kick_home_share_c25"][steps] - 0.5) * 2, np.nan_to_num(c["kick_home_share_c50"][steps] - 0.5) * 2,
+           np.nan_to_num(cos), np.isfinite(cos).astype(np.float64)]
+    return np.stack(out, axis=-1)
+
+
 def step_frames(period):
     return np.concatenate([np.flatnonzero(period == p)[::STEP] for p in np.unique(period)])
 
@@ -83,7 +105,7 @@ def idsse_job(args):
     streams = np.random.default_rng(seed).spawn(3)
     if improve.LIVE_DEAD:
         data = dict(data, ball=train.moving_dead_ball(data["players"], data["ball"], y, streams[2]))
-    players, ball = train.degrade(data, streams[0], lengths, 0.0)
+    players, ball = train.degrade(data, streams[0], lengths, 0.0, ball_smooth_frames=improve.BLUR_FRAMES)
     if gaps == "dead":
         hidden = train.dead_mask(y, streams[1], lengths, train.GAP_GIVEN_ALIVE)
     else:
@@ -91,9 +113,10 @@ def idsse_job(args):
     ball[hidden] = np.nan
     steps = step_frames(period)
     p, b = tensors(players, ball, team, period, pitch, steps)
+    kick = np.stack([kick_steps(players, ball, side, steps) for side in (team, 1 - team)]).astype(np.float16)
     with np.load(improve.cache_path(match_id, gaps, draw)) as f:
         y_ctrl = f["y_ctrl"]
-    np.savez(path, players=p, ball=b, steps=steps, period=period, y_raw=y, y_ctrl=y_ctrl)
+    np.savez(path, players=p, ball=b, kick=kick, steps=steps, period=period, y_raw=y, y_ctrl=y_ctrl)
     return path
 
 
@@ -108,7 +131,7 @@ def metrica_job(args):
         moved = np.random.default_rng([train.SEED, game, repeat, 1])
         data = dict(data, ball=train.moving_dead_ball(data["players"], data["ball"], y, moved))
     streams = np.random.default_rng([train.SEED, game, repeat]).spawn(2)
-    players, ball = train.degrade(data, streams[0], lengths, 0.0)
+    players, ball = train.degrade(data, streams[0], lengths, 0.0, ball_smooth_frames=improve.BLUR_FRAMES)
     if gaps == "dead":
         hidden = train.dead_mask(y, streams[1], lengths, train.GAP_GIVEN_ALIVE)
     else:
@@ -116,7 +139,8 @@ def metrica_job(args):
     ball[hidden] = np.nan
     steps = step_frames(period)
     p, b = tensors(players, ball, team, period, tuple(data["pitch"]), steps)
-    np.savez(path, players=p, ball=b, steps=steps, period=period, y_raw=y)
+    kick = np.stack([kick_steps(players, ball, side, steps) for side in (team, 1 - team)]).astype(np.float16)
+    np.savez(path, players=p, ball=b, kick=kick, steps=steps, period=period, y_raw=y)
     return path
 
 

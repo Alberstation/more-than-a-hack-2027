@@ -29,11 +29,20 @@ sys.path.insert(0, HERE)
 from possession import features, idsse, train  # noqa: E402
 from possession.control import CONTROL_WINDOW_S, control_labels, event_frames, runs  # noqa: E402,F401
 from possession.features_v3 import control_features, shape_features, touch_features  # noqa: E402
+from possession.features_kick import kick_features  # noqa: E402
 import dose_exp  # noqa: E402
 
 LIVE_DEAD = bool(os.environ.get("LIVE_DEAD"))   # the ball moves through stoppages, tests included
 FROZEN_OUT = os.path.join(train.DATA_DIR, "experiments", "improve")
 OUT = FROZEN_OUT + "_live" if LIVE_DEAD else FROZEN_OUT
+# The ball blurred as the challenge tracker's (train.BALL_SMOOTH_FRAMES), tests included. Same seeds,
+# so players and gaps match the plain bench frame for frame; only the ball and the kick block differ.
+BALL_BLUR = bool(os.environ.get("BALL_BLUR"))
+if BALL_BLUR:
+    assert LIVE_DEAD, "BALL_BLUR builds on the moving dead ball"
+    OUT += "_blur"
+BLUR_FRAMES = train.BALL_SMOOTH_FRAMES if BALL_BLUR else 0.0
+SHARP_OUT = FROZEN_OUT + "_live"     # a `sharp` arm fits on the unblurred ball, tests on this bench
 FPS = 25
 
 # Params
@@ -74,6 +83,8 @@ ARMS = {
     "ctrl_mixed_all3": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS, draws=3),
     "frozen_all3": dict(gaps="mixed", blocks=BLOCKS, draws=3, frozen=True),
     "ctrl_frozen_all3": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS, draws=3, frozen=True),
+    "ctrl_sharp3": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS, draws=3, sharp=True),
+    "ctrl_kick3": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS + ("kick",), draws=3),
     "ctrl_mixed_change": dict(labels="ctrl", gaps="mixed", blocks=BLOCKS, change=True),
 }
 
@@ -97,7 +108,7 @@ def prepare(args):
     streams = np.random.default_rng(seed).spawn(3)
     if LIVE_DEAD:
         data = dict(data, ball=train.moving_dead_ball(data["players"], data["ball"], y, streams[2]))
-    players, ball = train.degrade(data, streams[0], lengths, 0.0)
+    players, ball = train.degrade(data, streams[0], lengths, 0.0, ball_smooth_frames=BLUR_FRAMES)
     if gaps == "dead":
         hidden = train.dead_mask(y, streams[1], lengths, train.GAP_GIVEN_ALIVE)
     else:
@@ -109,6 +120,7 @@ def prepare(args):
         out["touch" + suffix] = touch_features(players, ball, side, period)[0]
         out["shape" + suffix] = shape_features(players, side, period)
         out["control" + suffix] = control_features(players, ball, side)
+        out["kick" + suffix] = kick_features(players, ball, side)[0]
     os.makedirs(os.path.dirname(path), exist_ok=True)
     np.savez(path, **out)
     return path
@@ -219,7 +231,7 @@ def train_arm(arm):
     matches = tests.get(gaps)
     train_gaps = GAPS if gaps == "mixed" else (gaps,)
     # A frozen arm fits on the still-ball matches and is tested on the moving ones.
-    fit_root = FROZEN_OUT if cfg.get("frozen") else None
+    fit_root = FROZEN_OUT if cfg.get("frozen") else SHARP_OUT if cfg.get("sharp") else None
     fit_on = {g: {m: load_match(m, g, blocks, 0, fit_root) if fit_root else tests[g][m] for m in idsse.MATCHES}
               for g in train_gaps}
     extra_draws = [(m, g, load_match(m, g, blocks, d, fit_root)) for d in range(1, cfg.get("draws", 1))
