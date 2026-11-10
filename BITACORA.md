@@ -359,8 +359,20 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
      - Antes de usarla, calibrarla: debe reproducir el signo (+) de "Metrica en el codificador"; si no, 2000 iteraciones.
    - **Sin entrenar** (CPU, en paralelo con la GPU):
      - **D:** 10, 11, 12 y 9 (ensemble de los codificadores de v5 y v6) en una pasada sobre las predicciones fuera de pliegue. Sube con ≥ +0,005 en ambos proveedores.
+       - **Resultado D: todo fuera** (`decode_fast.py`, 39 s; cada brazo elige sus costes en la misma rejilla, anidado; uniformes / en muerto, IDSSE y Metrica frente a v6):
+         - 9, ensemble de los codificadores de v5 y v6: −0,005 (3/7), −0,005 / −0,010 (1/7), +0,001;
+         - 10, mezcla geométrica w 0,75: −0,004, +0,001 / −0,006, +0,001; con w 0,5 peor;
+         - 12, coste de cambio ×0,75 sin balón: +0,001 (4/7), +0,002 / −0,003 (0/7), 0,000;
+         - 11, coste ×0,75 tras 4 s sin balón: +0,001, +0,002 / −0,003, 0,000.
+         - Bajar el coste en los huecos no recupera cortas: el decodificador ya está en su óptimo.
+       - **Canal de tiempo desde el último balón: fuera sin prueba**, ya existe (`since_ball` en el HGB y `since` en el codificador, con tope de 10 s).
      - **S6:** degradación aleatorizada, modelos de solo IDSSE sobre Metrica. La 6 queda fuera si la caída es < 0,01.
+       - **Resultado S6: cae, la 6 pasa a la criba con entrenamiento** (`stress_random.py`; cada partido y sorteo de Metrica con parámetros al azar: muerto 0,55–0,9, vivo 0,07–0,2, longitud ×0,5–2, jugadores 3–15 %, ruido 0,1–0,5 m, blur 0–10). v5 de todo IDSSE: en muerto 0,709 (0,711/0,677/0,739), aleatoria 0,676 (0,684/0,661/0,682); caída −0,033, peor sorteo −0,097. Solo el blur costaba −0,003 (3e): pesan los huecos, los jugadores perdidos y el ruido.
      - **Reacción diferida:** sobre las predicciones fuera de pliegue, AUC de la característica en los cambios candidatos del Viterbi, verdaderos frente a falsos. Fuera si AUC < 0,6.
+       - **Resultado: pasa a la criba** (`reaction_auc.py`, 14 s, IDSSE limpio, el mejor caso posible). Reacción = velocidad media hacia la portería contraria del equipo que gana el balón, menos la del que lo pierde, en [t+0,5; t+3] s menos en [t−2,5; t] s.
+         - AUC en todos los cambios de `ctrl` (877): 0,781 (0,73–0,82 por partido); en los que abren una posesión < 2 s (43): 0,633.
+         - v6 detecta a ±1 s el 48 %; en los que no detecta (455), AUC 0,708: hay información que v6 no usa del todo.
+         - Riesgo: el codificador ya ve las velocidades en ±50 s (como pasó con el toque). Brazo de criba: canal de reacción por paso en el codificador.
      - **Canal de tiempo desde el último balón visto:** mirar en el código si existe; si falta, un brazo de criba.
    - **Vídeo (V) y audio (A):**
      - **V1:** WASB con los pesos de fútbol publicados, en ~5.000 frames con balón del ATD. Fuera si coincide a ≤ 2 m en < 70 %. Si pasa: solo frames sin balón del ATD ±2 (GPU, desatendido).
