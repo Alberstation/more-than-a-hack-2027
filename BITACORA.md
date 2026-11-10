@@ -222,6 +222,75 @@ HGB solo: con Metrica 0,705/0,746 frente a 0,706/0,735 (B +0,013/+0,012). C (HGB
 - **Dónde se pierde el balón** (`gap_stats.py`, solo entradas; vivo del reto = v5 no muerto, con sesgo). Pérdidas por 1000 frames vivos con balón según el jugador más cercano 0–1/1–2/2–4/> 4 m: reto 1,0/1,3/1,0/0,9 (plano: **sin oclusión por jugadores**), IDSSE parecido. Según la línea (fuera/0–3/3–10/> 10 m): reto 11,7/2,3/1,4/0,6; huecos en muerto 7,3/2,8/1,3/0,6 (ya lo reproduce). **Diferencia: el reto pierde el balón lento** (3,3 frente a 6,0 m/s si sigue visible); nuestros huecos, a cualquier velocidad (6,6–7,5). Candidato: huecos con riesgo según velocidad y línea (rehace el banco).
 - **Código reutilizable:** PathCRF (`hyunsungkim-ds/pathcrf`, MPL-2.0 según GitHub; trae eventos DFL sincronizados), databallpy, ELASTIC (licencia no declarada), Ball Radar (sin licencia: no reutilizable).
 
+## Banco de ideas (de las investigaciones del 2026-11-02 y 2026-11-10)
+
+Fuentes: `reports/Posesiones cortas en tracking.md`, `Mejoras de posesión para v6.md`, `Posesión con información faltante.md` y sus notas. Estado: **pendiente** (por probar, en orden), **condicional**, **fuera** (con motivo). Las ganancias son estimadas, no medidas.
+
+**Codificador (reutiliza el HGB y las cachés):**
+1. **Pendiente: cabeza de poseedor por jugador**, supervisada con el balón limpio externo (último que toca). λ 0,3 y 1 como dos brazos. La probabilidad del equipo es el logsumexp de sus jugadores (Ball Radar suma por jugador). +0,01 a +0,03. En PathCRF, quitar las auxiliares cuesta −2,9/−6,0 de F1.
+2. **Pendiente: cabeza de estado del balón** (control, vuelo, disputa, muerto), en la misma pasada que la 1. Peral 2025 usa 4 estados; el "incontrolado" es ~10 % de los frames.
+3. **Pendiente: consistencia vista limpia / degradada** del mismo tramo (Zeng, CVPR 2024: FrameDrop más consistencia). 0 a +0,02. Hay que vigilar la memoria por la doble pasada.
+4. **Pendiente: SkillCorner como tercer proveedor**, solo en el codificador y con la regla `ctrl` (MIT, 20 partidos en disco, 10 fps, `possession.group`). Primero un atajo: v6 congelada puntuada sobre los 20 partidos. 0 a +0,02.
+5. **Condicional a la 1: ISAB / atención entre rivales.** 0 a +0,01. Un SAB plano da 68,2 en PathCRF frente a 75,7 de su diseño.
+6. **Condicional a la estrés: aleatorizar la degradación** por tramo: tasa y longitud de huecos, blur y ruido, en ráfagas y en rangos centrados en el perfil del reto (AugMix, aleatorización de dominio). Variantes:
+   - la mitad de los lotes con el balón oculto al 100 % (receta de Ball Radar);
+   - ocultar jugadores enteros durante toda la secuencia (Peral: mejor que frames sueltos).
+   
+   Aviso: aleatorizar más allá de lo realista empeora.
+7. **Pendiente, barato: SWA** (promedio de pesos al final del entrenamiento), sin coste en inferencia. SWAD da +3,6 pp en DomainBed.
+8. **Pendiente, barato: aumentar con el campo reflejado** (simetrías izquierda/derecha y arriba/abajo, con el cambio de lado correspondiente).
+9. **Por probar si sobra tiempo: ensemble excluyendo un proveedor** (codificador sin IDSSE o sin Metrica) junto a las semillas.
+
+**Decodificación y mezcla (sin entrenar, sobre las predicciones fuera de pliegue):**
+10. **Pendiente: mezcla en logit con temperatura.** ≤ +0,005.
+11. **Pendiente: duración máxima / prior de duración.** En un hueco largo, probablemente hubo un cambio dentro. La duración mínima ya está fuera. CAD (arXiv 2605.10149): la duración es su término más útil, aunque en 50Salads baja la exactitud por frame.
+12. **Pendiente: abaratar el coste de cambio solo dentro de los huecos**, con la probabilidad de cambio por frame de forward-backward en NumPy. Teoría: el umbral que maximiza F1 está por debajo de 0,5 (Lipton 2014). Ataca que emitimos menos posesiones (~0,9 veces el ritmo de `ctrl`).
+13. **Condicional a la 2: Viterbi de 5 estados** con transiciones legales (PathCRF, filtro híbrido de Yandex). Riesgo: `ctrl` ya asigna la disputa al último equipo.
+
+**Nuevas fuentes de entrada:**
+14. **Condicional, vídeo táctico: balón con WASB** (MIT; comprobar la licencia de los pesos) para rellenar huecos. +0,026 simulado (7/7).
+    - Detecciones pasadas a metros con la homografía del reto.
+    - GPU 1–2,5 h, cacheado y determinista: `use_deterministic_algorithms`, `cudnn.benchmark=False`, ffmpeg fijo, hash de la caché.
+    - Comprobación permitida: coincidencia con el balón del ATD donde ambos lo ven, y huecos llenados. Nunca comparar contra el vídeo.
+    - El usuario puede bajar el vídeo táctico (no el broadcast, que no está sincronizado) a `data/video/`.
+    - **Pasos una vez descargado:**
+      1. **`ffprobe`:** resolución, fps, número de frames (debe casar con los 199.319 del ATD, o hay que fijar el desfase con el reloj de los ficheros, nunca mirando imágenes) y si hay pista de audio.
+      2. **WASB en GPU**, con los pesos publicados y sin reentrenar ni ajustar nada con este vídeo. Caché de detecciones (frame, píxel, confianza) en `data/video/`, con su hash, en dos ejecuciones para comprobar que es determinista.
+      3. **Proyección a metros** con `BAR-ATH_tactical_homography.csv`.
+      4. **Comprobación automática** (permitida: datos del reto como entrada, sin verdad). Donde el ATD sí ve el balón, distancia WASB–ATD y tasa de coincidencia; en los huecos, cuántos frames llena y cuántos saltos imposibles (más de 40 m/s). El umbral de confianza se fija antes, con el valor del artículo de WASB o el de mejor coincidencia con el ATD, nunca con posesión.
+      5. **Rellenar** solo donde el ATD no tiene balón.
+      6. **Recalcular el perfil de huecos del reto** con el balón rellenado (estadística de entrada, como ahora). Medir en los externos cuánto cambia la degradación y reentrenar el codificador con el perfil nuevo si cambia. Criba de 3i con la puerta habitual.
+      7. Si pasa: el pipeline lee la caché. Se documenta que la caché es un preprocesado en GPU y se dan las órdenes para regenerarla.
+    - **Prohibido:** mirar el vídeo para comprobar balón o posesión; elegir umbrales o versiones por la puntuación de los 5 min públicos; subir el vídeo o sus frames a servicios de IA; meter en git el vídeo, frames o detecciones.
+15. **Condicional, audio del vídeo: silbato y golpeo** con un detector de picos sin entrenar (librosa), determinista en CPU, para el inicio y el final del muerto. Antes, comprobar con `ffprobe` que hay pista de audio (paso 1 de la 14). Si la hay:
+    - extraer la pista con ffmpeg a WAV local;
+    - sacar los picos con parámetros por defecto o fijados antes;
+    - comprobación automática: cuántos picos caen cerca de las reanudaciones del Smart Tagging;
+    - para medir su efecto: con audio simulado en los externos, a partir de los inicios y finales de `BallStatus` y con ruido. Ni IDSSE ni Metrica tienen audio, así que el efecto real no se puede medir. Audio más vídeo dio +4,19 mAP en detección de acciones (Vanderplaetse 2020). No hay modelo abierto de silbato.
+16. **Fuera por ahora: detector de acciones de vídeo** (lRomul 2023, MIT, mAP@1 86,5; T-DEED, GPL-3.0). Está entrenado con broadcast de SoccerNet (otra cámara), su tolerancia de 1 s es gruesa para las < 2 s, y los pesos son de dudosa licencia (vídeo con NDA). Se usaría asignando su instante al jugador más cercano en el tracking.
+
+**Fuera, con motivo:**
+- Imputar el balón y aplicar reglas: 48,4 frente a 75,7 inferido directamente (PathCRF). MIDAS, NAOMI, CSDI y Graph Imputer no suelen superar a la interpolación lineal. Se mantiene la interpolación corta actual.
+- Decodificar por F1 o IoU esperado (Jansche, Nowozin): es el MBR, ya medido (−0,005).
+- Reacción colectiva tras la pérdida (contrapresión, compacidad, centroide): llega a 2–5 s, después de que acabe una corta. Tampoco aportó la forma del equipo.
+- Sin evaluar en ningún artículo, solo si sobra tiempo: una característica de reacción diferida, que mida si el otro equipo reacciona entre t y t+3 s al candidato.
+- Indicadores de falta de datos y tiempo desde el último balón (GRU-D, Lipton 2016): v6 ya tiene el indicador de balón ausente. Comprobar si tiene el canal de tiempo desde el último balón visto; si no, añadirlo al probar la 1.
+- Preentrenamiento enmascarado (PrimeNet): solo ayuda con pocas etiquetas.
+- Adaptación con el partido del reto sin etiquetas (AdaBN, MixStyle con objetivo, CoDATS, TTA): prohibida por nuestras reglas. VisDA 2020 la prohibió explícitamente.
+- PathCRF como emisor: necesita 22 identidades y porteros, cae de 73,9 a 49,2 al cambiar de proveedor, y 7 días no bastan.
+- CRF de extremo a extremo y transformer en lugar de la TCN: en Ball Radar las LSTM superan a los transformers.
+- Smart Tagging como anclas: solo trae balones parados, que ya se usan. ELASTIC y Biermann necesitan eventos densos.
+- Clasificar equipos por el color de la camiseta: no hace falta, porque el tracking ya da el equipo.
+- Datos: ELASTIC (poco valor, porque `ctrl` ya resiste el reloj), SoccerTrack v2 (balón no documentado), Last Row (sin eventos). PFF, SoccerNet-GAR y FOOTPASS quedan fuera por formulario o NDA.
+- Ya hecho: normalización por partido, indicador de balón ausente, ensembles de semillas.
+
+**Límites que nadie recupera sin vídeo:**
+- el poseedor en el juego vivo sin balón (7 % de los frames graduados; el techo publicado es 61,9 % del jugador y F1 de pases 0,39);
+- la frontera de las < 1 s al nivel de IoU 0,7 (PathCRF recupera ~80 % a 1 s de tolerancia);
+- la diferencia de definición entre `ctrl` y la verdad del reto.
+
+**Método de prueba:** ver 3i. Primero lo que no requiere entrenar (10–12 y la estrés de la 6); luego la 1 con la 2, la 3 sobre la ganadora, la 4, y la 7–8 como añadidos baratos en cualquier reentreno.
+
 ## Código
 
 - Producción: `possession/train_v4.py` (usa `train_v3.py` con `moving=True`), `features_v3.py`, `pipeline.py` (`--version v5` por defecto). v5: `v5.py` (constantes y HGB con `labels="ctrl"`), `encoder.py`, `control.py`, `models/*.npz`.
@@ -283,6 +352,31 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
    - Preparar en CPU las cachés nuevas (objetivos de poseedor y estado, lector de SkillCorner) mientras la GPU entrena otro brazo. La GPU no admite dos entrenamientos a la vez (8 GB, ya hubo falta de memoria).
    - Guardar los modelos de cada pliegue, para que las pruebas de degradación y decodificación no exijan reentrenar.
    - Cálculo total estimado de la tanda: 4–5 h.
+3j. **Plan de descarte** (sustituye 3i; números = Banco de ideas). Cada idea pasa por la prueba más barata capaz de descartarla, y solo la combinación de ganadoras se entrena completa.
+   - **Criba de entrenamiento:** receta corta (1 semilla, ~1000 iteraciones, 4 pliegues: J03WMX, J03WN1, Metrica 1, Metrica 2; ~5 min por brazo), pareada con la referencia de la misma receta.
+     - Fuera si la media es ≤ 0 o si gana en ≤ 2 de 4.
+     - Sube si da ≥ +0,01 y gana en ≥ 3 de 4.
+     - Antes de usarla, calibrarla: debe reproducir el signo (+) de "Metrica en el codificador"; si no, 2000 iteraciones.
+   - **Sin entrenar** (CPU, en paralelo con la GPU):
+     - **D:** 10, 11, 12 y 9 (ensemble de los codificadores de v5 y v6) en una pasada sobre las predicciones fuera de pliegue. Sube con ≥ +0,005 en ambos proveedores.
+     - **S6:** degradación aleatorizada, modelos de solo IDSSE sobre Metrica. La 6 queda fuera si la caída es < 0,01.
+     - **Reacción diferida:** sobre las predicciones fuera de pliegue, AUC de la característica en los cambios candidatos del Viterbi, verdaderos frente a falsos. Fuera si AUC < 0,6.
+     - **Canal de tiempo desde el último balón visto:** mirar en el código si existe; si falta, un brazo de criba.
+   - **Vídeo (V) y audio (A):**
+     - **V1:** WASB con los pesos de fútbol publicados, en ~5.000 frames con balón del ATD. Fuera si coincide a ≤ 2 m en < 70 %. Si pasa: solo frames sin balón del ATD ±2 (GPU, desatendido).
+     - **V2:** con la tasa de relleno y el error medidos en V1, simular el mismo relleno en Metrica con modelos de solo IDSSE. Sube con ≥ +0,01.
+     - **A1:** energía 2–5 kHz del audio, picos frente a las reanudaciones del Smart Tagging. Fuera si coinciden < 50 %.
+     - **A2:** si A1 pasa, simular en las predicciones fuera de pliegue picos con el error y la tasa de falsos medidos sobre los cambios de `BallStatus`, bajando el coste a muerto junto al pico.
+     - **16:** fuera sin prueba (pesos de SoccerNet bajo NDA, otra cámara, tolerancia de 1 s).
+   - **Brazos de criba** (GPU en cola; se programa el siguiente mientras corre):
+     - P = 1 (cabeza de poseedor).
+     - PS = 1 + 2 (poseedor y estado del balón); 13 se mide sin entrenar sobre las salidas de PS.
+     - C = 3 (consistencia limpio / degradado).
+     - F = 8 (campo reflejado).
+     - 7 (SWA) sale gratis de los puntos de control de cada brazo.
+     - Condicionales: 5 (ISAB, si P o PS pasan) y 6 (si S6 cae).
+   - **SkillCorner (4):** lector y regla `ctrl`. Primero, v6 congelada sobre los 20 partidos, sin entrenar: es otro banco de validación. Después, brazo con SkillCorner en el entrenamiento, mirando solo IDSSE y Metrica.
+   - **Confirmación:** ganadoras juntas, 10 pliegues (~30 min), luego 3 semillas con constantes anidadas (~1,5 h), puerta habitual contra v6. Después, regeneración limpia, documentación y PDF.
 4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
 6. Subir el CSV solo cuando se decida; la entrega oficial es el 17/11/2026.
