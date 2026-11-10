@@ -393,6 +393,19 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
      - 7 (SWA) sale gratis de los puntos de control de cada brazo.
      - Condicionales: 5 (ISAB, si P o PS pasan) y 6 (si S6 cae).
    - **SkillCorner (4):** lector y regla `ctrl`. Primero, v6 congelada sobre los 20 partidos, sin entrenar: es otro banco de validación. Después, brazo con SkillCorner en el entrenamiento, mirando solo IDSSE y Metrica.
+   - **Fase 1, criba** (`screen_data.py` en CPU, unos 10 min: objetivos de poseedor y estado del balón con el balón limpio (39 % de pasos con objetivo de poseedor), vistas limpias y 60 conjuntos aleatorizados; `screen.py` en GPU, 1000 iteraciones, ~50–75 s por pliegue, ~4 min por brazo; `screen_score.py`, constantes de v6 fijas, `improve_live/screen/summary.json`).
+     - Referencia corta `ref`, por pliegue J03WMX / J03WN1 / Metrica 1 / Metrica 2: 0,738 / 0,690 / 0,698 / 0,664 (media 0,698); banco aleatorio 0,668.
+     - **Calibración superada:** `nomet` (sin Metrica) da −0,005 (2/4) y −0,012 en el banco aleatorio, el mismo signo que la receta completa.
+     - Diferencias con `ref`, por pliegue; después, media (pliegues ganados), banco aleatorio y veredicto:
+
+       | Brazo | Por pliegue | Media (ganados) | Aleatorio | Veredicto |
+       |---|---|---|---|---|
+       | 7, SWA (`ref_swa`) | −0,004 −0,005 −0,002 0,000 | −0,003 (1/4) | −0,002 | Fuera; tampoco ayuda en ningún otro brazo |
+       | 8, campo reflejado (`F`) | −0,004 +0,013 0,000 +0,003 | +0,003 (3/4) | −0,004 | Dudosa |
+       | Reacción diferida (`RX`) | +0,015 +0,005 −0,006 +0,001 | +0,004 (3/4) | +0,001 | Dudosa |
+
+     - Ruido entre pliegues: ~±0,01. Las dudosas solo vuelven si, combinadas con una ganadora, suman.
+     - En curso: P03, P1, PS, C y R.
    - **Confirmación:** ganadoras juntas, 10 pliegues (~30 min), luego 3 semillas con constantes anidadas (~1,5 h), puerta habitual contra v6. Después, regeneración limpia, documentación y PDF.
 4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
