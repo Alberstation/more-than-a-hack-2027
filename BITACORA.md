@@ -14,7 +14,7 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 - **Metrica v3:** 0,601 y 0,643, frente a 0,541 y 0,558.
 - **Partido del reto:** 309 posesiones de 11,2 s; 49/59 balones parados con reanudación.
 - **5 min públicos (solo comprobación):** v3 0,645 con 14 posesiones; v2 0,463 con 21; reales 17. Muestra mínima, no decide nada.
-- **Reproducibilidad:** clon nuevo de GitHub (`d78172f`) + entorno nuevo con `requirements-solution.txt` + solo los 4 archivos de `data/tactical` sin cachés + IDSSE descargado de cero: CSV v5 idéntico (SHA-256 `866cb21a…a32dcc`), válido, 28 min en total. Mismo PC, no otra máquina física.
+- **Reproducibilidad:** clon nuevo de GitHub (`d78172f`) + entorno nuevo con `requirements-solution.txt` + solo los 4 archivos de `data/tactical` sin cachés + IDSSE descargado de cero: CSV v5 idéntico (SHA-256 `866cb21a…a32dcc`), válido, 28 min en total. Mismo PC, no otra máquina física. v6: mismo procedimiento con `d087459`, CSV idéntico (`a6ef47f6…a2d5ee`), válido, 32 min.
 - **Estimación corregida:** las cifras CV y Metrica de arriba usan balón muerto congelado, que no ocurre en el reto. Con balón muerto en movimiento, v3 da CV 0,478/0,556 y Metrica 0,514/0,596 (costes 5, 40).
 - **Reproducibilidad v4:** predicciones idénticas al brazo medido (diferencia máxima 0,0) y CSV igual byte a byte en dos ejecuciones de `pipeline.py`.
 - **Verdad de referencia:** solo `ctrl` (definición y 5 min públicos); `raw` ya no se mide. v4 usaba costes (40, 40), decididos contra `ctrl`.
@@ -251,6 +251,38 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
    4. **Huecos según velocidad y línea: hechos, sin reentrenar; v5 no sufre** (`speed_gaps.py`). Riesgo del reto por velocidad 0–2/2–5/5–10/> 10 m/s: 2,6/1,7/0,6/0,1 por 1000 frames vivos con balón (nuestros huecos: planos). Patrón `speed`: muerto oculto como `dead` pero **sin desfase** (el desfase de ±2 s ocultaba frames vivos junto a cada parada a cualquier velocidad y aplanaba el riesgo; era la mayoría de las pérdidas en vivo), y en vivo un proceso que en cada frame visible empieza un hueco con probabilidad base × riesgo(velocidad) × riesgo(línea), base por bisección para el 12,7 % oculto. Resultado en Metrica: riesgo 1,0/0,6/0,2/0,0, se pierde a 2,3 frente a 6,1 m/s (más exagerado que el reto: prueba de estrés). v5 de todo IDSSE sobre Metrica 1–3, constantes de v5: uniformes 0,683, en muerto 0,709, **speed 0,715** (los 3 partidos suben frente a en muerto). No hace falta reentrenar.
    5. **Descartadas sin entrenar** (comprobar antes si puede importar): relleno del balón en huecos < 1 s, que son 17 de 150 huecos y el 0,05 % de los frames graduados; codificador a 12,5 Hz, porque el HGB a 25 fps recupera menos cortas (13–17 %) que la pareja con el codificador a 5 Hz (20 %): la resolución no es el límite.
    6. Método rápido para lo que quede: atajo sin entrenar en Metrica con los modelos de todo IDSSE; si hay que entrenar, criba con receta reducida (cada 10 frames, 1 sorteo, 1 semilla) pareada con la referencia, y confirmación completa solo si pasa; guardar los modelos por pliegue para que las pruebas de degradación no exijan reentrenar.
+3g. **Investigación de mejoras para v6:** `reports/Mejoras de posesión para v6.md` (notas en `research_notes/Mejoras de posesión para v6/`). Orden propuesto, ganancias estimadas sin medir:
+   1. Cabeza auxiliar de poseedor por jugador en el codificador, supervisada con el balón limpio externo (+0,01 a +0,03). Base: en PathCRF, quitar las pérdidas auxiliares baja el F1 de 75,7 a 69,7 sobre los mismos 7 partidos.
+   2. SkillCorner como tercer proveedor, solo en el codificador, con la regla `ctrl` (0 a +0,02). Antes se descartó por curva saturada dentro de un proveedor; Metrica mostró que otro proveedor sí suma.
+   3. Atención entre equipos sobre la cabeza (0 a +0,01).
+   4. Atajos sin entrenar: mezcla en logit con temperatura y prior de duración (≤ +0,01).
+   - Descartados: CRF de extremo a extremo, transformer, PathCRF como emisor (necesita 22 identidades), ELASTIC y SoccerTrack v2. Quedan fuera por formulario o NDA: PFF, GAR y FOOTPASS.
+3h. **Investigación de información faltante:** `reports/Posesión con información faltante.md` (notas en `research_notes/Posesión con información faltante/`).
+   - Conclusión: no reconstruir el balón, sino tratar al poseedor como variable oculta supervisada con el balón limpio externo. En PathCRF, sobre los mismos 7 partidos, imputar el balón y aplicar reglas da 48,4 de F1 frente a 75,7 inferido directamente.
+   - Refuerza la cabeza de poseedor y SkillCorner de 3g.
+   - Ideas nuevas:
+     - cabeza de estado del balón (control, vuelo, disputa, muerto) junto a la de poseedor;
+     - pérdida de consistencia entre la vista limpia y la degradada (Zeng, CVPR 2024);
+     - aleatorizar la degradación (lotes sin balón, jugadores enteros ocultos);
+     - duración máxima en Viterbi;
+     - decodificador de 5 estados, si existe la cabeza de estado.
+   - Fuera: decodificar por F1 esperado (es el MBR ya medido), señales de reacción colectiva (llegan a 2–5 s, después de que acabe una corta), anclas de Smart Tagging y PathCRF como emisor.
+   - Irrecuperable sin vídeo:
+     - el poseedor en el juego vivo sin balón, que es solo el 7 % de los frames graduados;
+     - la frontera de las posesiones < 1 s al nivel de IoU 0,7;
+     - la diferencia de definición entre `ctrl` y la verdad del reto.
+   - Balón del vídeo con WASB (+0,026 simulado): no hay vídeo del reto en este PC.
+3i. **Pruebas en el mínimo tiempo.** Un pliegue del codificador tarda 2–3,5 min (10 pliegues ≈ 25–35 min por semilla). Las predicciones fuera de pliegue de la referencia v6 están guardadas (`oof/encoder_metrica_s2027…`), así que una idea solo entrena su propio brazo. Los "días" del plan son sobre todo de programación, no de cálculo.
+   - Sin entrenar, en minutos sobre esas predicciones: mezcla en logit con temperatura, duración máxima y decodificador de 5 estados.
+   - Solo codificador (reutiliza el HGB y las cachés):
+     - 1 semilla pareada con `encoder_metrica_s2027` y constantes de v6 fijas;
+     - orden de pliegues Metrica 1, J03WMX, Metrica 2, J03WN1;
+     - parada tras 4 pliegues (~10 min) si la media pareada es ≤ −0,01 con como mucho un pliegue positivo;
+     - si sigue, 10 pliegues (~30 min) y pasa a confirmación si da ≥ +0,01;
+     - confirmación: 3 semillas y elección anidada de constantes (~1,5 h).
+   - Preparar en CPU las cachés nuevas (objetivos de poseedor y estado, lector de SkillCorner) mientras la GPU entrena otro brazo. La GPU no admite dos entrenamientos a la vez (8 GB, ya hubo falta de memoria).
+   - Guardar los modelos de cada pliegue, para que las pruebas de degradación y decodificación no exijan reentrenar.
+   - Cálculo total estimado de la tanda: 4–5 h.
 4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
 6. Subir el CSV solo cuando se decida; la entrega oficial es el 17/11/2026.
