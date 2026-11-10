@@ -70,7 +70,7 @@ check of the file; nothing was fitted or chosen on them.
 | Tactical ATD tracking | **Used**: the only input to the models. |
 | Smart Tagging | **Used** only for the two `Kick Off (Start)` frames: before them each half is `D`. Using its set-piece windows inside the decoder was tested on external matches and dropped (no gain). |
 | Ball gaps of the challenge tracking | **Used** as unlabelled input statistics: the length distribution and share of the tracker's missing-ball gaps set the degradation applied to the external training matches. |
-| Homography, broadcast tracking and video | Not used. The ATD positions are already in pitch metres; the broadcast feed is not synchronised; no video file was used. A ball recovered from video (WASB) was simulated by restoring part of the gaps: +0.026, under our acceptance threshold. |
+| Homography, broadcast tracking and video | Not used by the models. The ATD positions are already in pitch metres; the broadcast feed is not synchronised. The tactical video was tested as an input only, with nothing trained or tuned on it. The pretrained WASB ball detector (MIT, its soccer weights and default threshold), run on whole frames and on 2×2 crops, put its detection within 2 m of the ATD ball on at most 21.6 % of the frames where the ATD sees it, so filling the gaps with it would add more noise than ball. A fixed-rule whistle detector on the audio found 3 of 6 kick-offs against a 28 % chance rate. Neither is used. |
 | Public five-minute ground truth | File check only. |
 
 **Methods tried and dropped**, all measured on held-out external matches, accepted only with +0.03
@@ -147,7 +147,8 @@ of ±0.5 s (95–97 %). They are real possessions, not alignment artefacts.
 - **Two providers for training.** Across providers we lose about 0.1 (IDSSE → Metrica); training
   the encoder on both recovers 0.01–0.02. The literature reports similar or larger drops.
 - **With more time:** labelled matches from an automatic, broadcast-style tracker (the closest
-  match to this domain), the ball recovered from the video to fill gaps, and per-player touch
+  match to this domain), a ball detector trained on external wide-angle tactical footage to fill
+  gaps, and per-player touch
   attribution from video for the sub-2-second possessions.
 
 ## 6. Reproduction

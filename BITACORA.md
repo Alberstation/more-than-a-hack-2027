@@ -248,7 +248,7 @@ Fuentes: `reports/Posesiones cortas en tracking.md`, `Mejoras de posesión para 
 13. **Condicional a la 2: Viterbi de 5 estados** con transiciones legales (PathCRF, filtro híbrido de Yandex). Riesgo: `ctrl` ya asigna la disputa al último equipo.
 
 **Nuevas fuentes de entrada:**
-14. **Condicional, vídeo táctico: balón con WASB** (MIT; comprobar la licencia de los pesos) para rellenar huecos. +0,026 simulado (7/7).
+14. **Fuera (V1, ver 3j): vídeo táctico, balón con WASB** (MIT; comprobar la licencia de los pesos) para rellenar huecos. +0,026 simulado (7/7).
     - Detecciones pasadas a metros con la homografía del reto.
     - GPU 1–2,5 h, cacheado y determinista: `use_deterministic_algorithms`, `cudnn.benchmark=False`, ffmpeg fijo, hash de la caché.
     - Comprobación permitida: coincidencia con el balón del ATD donde ambos lo ven, y huecos llenados. Nunca comparar contra el vídeo.
@@ -262,7 +262,7 @@ Fuentes: `reports/Posesiones cortas en tracking.md`, `Mejoras de posesión para 
       6. **Recalcular el perfil de huecos del reto** con el balón rellenado (estadística de entrada, como ahora). Medir en los externos cuánto cambia la degradación y reentrenar el codificador con el perfil nuevo si cambia. Criba de 3i con la puerta habitual.
       7. Si pasa: el pipeline lee la caché. Se documenta que la caché es un preprocesado en GPU y se dan las órdenes para regenerarla.
     - **Prohibido:** mirar el vídeo para comprobar balón o posesión; elegir umbrales o versiones por la puntuación de los 5 min públicos; subir el vídeo o sus frames a servicios de IA; meter en git el vídeo, frames o detecciones.
-15. **Condicional, audio del vídeo: silbato y golpeo** con un detector de picos sin entrenar (librosa), determinista en CPU, para el inicio y el final del muerto. Antes, comprobar con `ffprobe` que hay pista de audio (paso 1 de la 14). Si la hay:
+15. **Fuera (A1, ver 3j): audio del vídeo, silbato y golpeo** con un detector de picos sin entrenar (librosa), determinista en CPU, para el inicio y el final del muerto. Antes, comprobar con `ffprobe` que hay pista de audio (paso 1 de la 14). Si la hay:
     - extraer la pista con ffmpeg a WAV local;
     - sacar los picos con parámetros por defecto o fijados antes;
     - comprobación automática: cuántos picos caen cerca de las reanudaciones del Smart Tagging;
@@ -364,8 +364,13 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
      - **Canal de tiempo desde el último balón visto:** mirar en el código si existe; si falta, un brazo de criba.
    - **Vídeo (V) y audio (A):**
      - **V1:** WASB con los pesos de fútbol publicados, en ~5.000 frames con balón del ATD. Fuera si coincide a ≤ 2 m en < 70 %. Si pasa: solo frames sin balón del ATD ±2 (GPU, desatendido).
+       - **Resultado V1: fuera** (`video_ball.py sample`, 50 tramos de 99 frames con balón del ATD y 50 en huecos, umbral 0,5 por defecto, sin ajustar):
+         - frame entero: dispara en el 9,9 %, a ≤ 2 m en el 0,0 %, mediana 49 m;
+         - 2×2 trozos solapados (escala ~9 px/m, como sus cámaras de entrenamiento): dispara en el 64,7 %, a ≤ 2 m en el 21,6 % (33 % de lo que dispara; a ≤ 1 m el 20 %), mediana 10 m; en los huecos dispara en el 19,7 %, con solo el 23 % dentro del campo y saltos > 40 m/s en el 31 %.
+         - Falla por el dominio (otra cámara y otra compresión), no por la escala. Rellenar con 2 de cada 3 detecciones falsas mete ruido. V2 no se hace. Vídeo y audio borrados de `data/video/` tras la prueba (quedan las muestras `.npz`); `TECHNICAL.md`, `.tex` y PDF actualizados: vídeo probado solo como entrada, sin usar.
      - **V2:** con la tasa de relleno y el error medidos en V1, simular el mismo relleno en Metrica con modelos de solo IDSSE. Sube con ≥ +0,01.
      - **A1:** energía 2–5 kHz del audio, picos frente a las reanudaciones del Smart Tagging. Fuera si coinciden < 50 %.
+       - **Resultado A1: fuera** (`audio_whistle.py`, regla fijada antes: banda 2,5–4,5 kHz, cuota y tonalidad > mediana + 6 MAD durante ≥ 0,12 s). Detecta 460 pitidos (3,5 por minuto: el ruido de la grada cuela). Saques de centro con pitido a ±5 s: 3 de 6 (50 %), frente a un azar del 28 %; no llega a 3 veces el azar. No se reajusta el umbral: con 6 saques sería sobreajustar. A2 no se hace.
      - **A2:** si A1 pasa, simular en las predicciones fuera de pliegue picos con el error y la tasa de falsos medidos sobre los cambios de `BallStatus`, bajando el coste a muerto junto al pico.
      - **16:** fuera sin prueba (pesos de SoccerNet bajo NDA, otra cámara, tolerancia de 1 s).
    - **Brazos de criba** (GPU en cola; se programa el siguiente mientras corre):
