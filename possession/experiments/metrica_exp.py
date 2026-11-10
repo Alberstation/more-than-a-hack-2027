@@ -36,6 +36,7 @@ FOLDER = os.path.join(train.DATA_DIR, "external", "metrica")
 OUT = os.path.join(improve.OUT, "metrica")
 PITCH = (105.0, 68.0)
 GAMES = (1, 2)
+ALL_GAMES = (1, 2, 3)       # game 3 ships in EPTS + JSON; read only by the multi-provider tests
 REPEATS = 3
 OWNER_EVENTS = ("PASS", "SET PIECE", "SHOT", "RECOVERY", "BALL LOST")
 
@@ -53,13 +54,67 @@ def read_tracking(game, side):
     return table[:, 0].astype(np.int8), players, table[:, [ball_col, ball_col + 1]]
 
 
-def owners(game, n):
-    frames, teams = [], []
+def events(game):
+    """[(frame from 0, team 0/1, type)] of every team event. Games 1-2 CSV; game 3 JSON, with team
+    FIFATMA as 0, the first team in its metadata, as Home is in the CSV games."""
+    out = []
+    if game == 3:
+        with open(os.path.join(FOLDER, "Sample_Game_3_events.json"), encoding="utf-8") as handle:
+            for e in json.load(handle)["data"]:
+                team = (e.get("team") or {}).get("id")
+                if team in ("FIFATMA", "FIFATMB") and e["start"]["frame"] is not None:
+                    out.append((int(e["start"]["frame"]) - 1, 0 if team == "FIFATMA" else 1, e["type"]["name"]))
+        return out
     with open(os.path.join(FOLDER, "Sample_Game_{}_RawEventsData.csv".format(game))) as handle:
         for row in csv.DictReader(handle):
-            if row["Type"] in OWNER_EVENTS and row["Team"] in ("Home", "Away"):
-                frames.append(int(row["Start Frame"]) - 1)
-                teams.append(0 if row["Team"] == "Home" else 1)
+            if row["Team"] in ("Home", "Away"):
+                out.append((int(row["Start Frame"]) - 1, 0 if row["Team"] == "Home" else 1, row["Type"]))
+    return out
+
+
+def read_epts3():
+    """(period, players (n, slots, 2), ball (n, 2), team) of game 3, normalised like the CSV games."""
+    import xml.etree.ElementTree as ET
+    root = ET.parse(os.path.join(FOLDER, "Sample_Game_3_metadata.xml")).getroot()
+    team_of = {p.get("id"): p.get("teamId") for p in root.iter("Player")}
+    channel = {c.get("id"): c.get("playerId") for c in root.iter("PlayerChannel")}
+    params = {p.findtext("Name"): p.findtext("Value") for p in root.iter("ProviderParameter")}
+    specs = []
+    for spec in root.iter("DataFormatSpecification"):
+        ids = [channel[r.get("playerChannelId")] for r in spec.iter("PlayerChannelRef")
+               if r.get("playerChannelId").endswith("_x")]
+        specs.append((int(spec.get("startFrame")), int(spec.get("endFrame")), ids))
+    ids = sorted({i for _, _, s in specs for i in s}, key=lambda i: (team_of[i] != "FIFATMA", i))
+    slot = {i: k for k, i in enumerate(ids)}
+    n = int(params["second_half_end"])
+    players = np.full((n, len(ids), 2), np.nan)
+    ball = np.full((n, 2), np.nan)
+    period = np.zeros(n, dtype=np.int8)
+    period[int(params["first_half_start"]) - 1:int(params["first_half_end"])] = 1
+    period[int(params["second_half_start"]) - 1:int(params["second_half_end"])] = 2
+    spec_at = lambda f: next(s for a, b, s in specs if a <= f <= b)
+    with open(os.path.join(FOLDER, "Sample_Game_3_tracking.txt")) as handle:
+        for line in handle:
+            head, body, b = line.rstrip().split(":")
+            f = int(head)
+            if not 1 <= f <= n:
+                continue
+            order = spec_at(f)
+            for pid, xy in zip(order, body.split(";")):
+                x, y = xy.split(",")
+                players[f - 1, slot[pid]] = (float(x), float(y))
+            bx, by = b.split(",")
+            ball[f - 1] = (float(bx), float(by))
+    team = np.array([0 if team_of[i] == "FIFATMA" else 1 for i in ids], dtype=np.int8)
+    return period, players, ball, team
+
+
+def owners(game, n):
+    frames, teams = [], []
+    for frame, team, kind in events(game):
+        if kind in OWNER_EVENTS:
+            frames.append(frame)
+            teams.append(team)
     order = np.argsort(frames, kind="stable")
     frames, teams = np.array(frames)[order], np.array(teams)[order]
     owner = np.full(n, -1, dtype=np.int8)
@@ -69,13 +124,17 @@ def owners(game, n):
 
 
 def load_game(game):
-    period, home, ball = read_tracking(game, "Home")
-    _, away, _ = read_tracking(game, "Away")
-    n = min(len(home), len(away))
-    period, home, away, ball = period[:n], home[:n], away[:n], ball[:n]
-    players = np.concatenate([home, away], axis=1) * np.array(PITCH)
-    ball = ball * np.array(PITCH)
-    team = np.r_[np.zeros(home.shape[1], dtype=np.int8), np.ones(away.shape[1], dtype=np.int8)]
+    if game == 3:
+        period, players, ball, team = read_epts3()
+        players, ball = players * np.array(PITCH), ball * np.array(PITCH)
+    else:
+        period, home, ball = read_tracking(game, "Home")
+        _, away, _ = read_tracking(game, "Away")
+        n = min(len(home), len(away))
+        period, home, away, ball = period[:n], home[:n], away[:n], ball[:n]
+        players = np.concatenate([home, away], axis=1) * np.array(PITCH)
+        ball = ball * np.array(PITCH)
+        team = np.r_[np.zeros(home.shape[1], dtype=np.int8), np.ones(away.shape[1], dtype=np.int8)]
     keep = period > 0
     players, ball, period = players[keep], ball[keep], period[keep]
     n = len(ball)
@@ -105,12 +164,15 @@ def prepare(args):
     else:
         hidden = train.ball_mask(len(y), streams[1], lengths, share)
     ball[hidden] = np.nan
-    out = dict(y=y, period=period)
-    out["base"] = features.build(players, ball, team, period, tuple(data["pitch"]))[0]
-    out["touch"] = touch_features(players, ball, team, period)[0]
-    out["shape"] = improve.shape_features(players, team, period)
-    out["control"] = improve.control_features(players, ball, team)
-    out["kick"] = improve.kick_features(players, ball, team)[0]
+    import live_review
+    out = dict(y=y, y_ctrl=live_review.metrica_control(y, *live_review.metrica_events(game)), period=period)
+    # Both views, so a Metrica game can join the training pool as an IDSSE match does.
+    for suffix, side in (("", team), ("_swap", 1 - team)):
+        out["base" + suffix] = features.build(players, ball, side, period, tuple(data["pitch"]))[0]
+        out["touch" + suffix] = touch_features(players, ball, side, period)[0]
+        out["shape" + suffix] = improve.shape_features(players, side, period)
+        out["control" + suffix] = improve.control_features(players, ball, side)
+        out["kick" + suffix] = improve.kick_features(players, ball, side)[0]
     np.savez(path, **out)
     return path
 
@@ -174,11 +236,11 @@ if __name__ == "__main__":
     if sys.argv[1] == "prep":
         lengths, share, real = dose_exp.gap_profile()
         assert real
-        jobs = [(g, r, gaps, lengths, share) for g in GAMES for r in range(REPEATS) for gaps in improve.GAPS]
+        jobs = [(g, r, gaps, lengths, share) for g in ALL_GAMES for r in range(REPEATS) for gaps in improve.GAPS]
         with ProcessPoolExecutor(4) as pool:
             for path in pool.map(prepare, jobs):
                 print("ready", os.path.basename(path), flush=True)
-        for g in GAMES:
+        for g in ALL_GAMES:
             d = load_game(g)
             found = decoder_exp.spells(d["y"], d["period"])
             print("game", g, "frames", len(d["y"]), "spells", len(found),

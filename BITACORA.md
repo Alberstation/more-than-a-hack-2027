@@ -13,7 +13,7 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 - **Metrica v3:** 0,601 y 0,643, frente a 0,541 y 0,558.
 - **Partido del reto:** 309 posesiones de 11,2 s; 49/59 balones parados con reanudación.
 - **5 min públicos (solo comprobación):** v3 0,645 con 14 posesiones; v2 0,463 con 21; reales 17. Muestra mínima, no decide nada.
-- **Reproducibilidad:** dos procesos separados dan el mismo modelo; el CSV se regenera idéntico en local. Falta máquina limpia.
+- **Reproducibilidad:** clon nuevo de GitHub (`d78172f`) + entorno nuevo con `requirements-solution.txt` + solo los 4 archivos de `data/tactical` sin cachés + IDSSE descargado de cero: CSV v5 idéntico (SHA-256 `866cb21a…a32dcc`), válido, 28 min en total. Mismo PC, no otra máquina física.
 - **Estimación corregida:** las cifras CV y Metrica de arriba usan balón muerto congelado, que no ocurre en el reto. Con balón muerto en movimiento, v3 da CV 0,478/0,556 y Metrica 0,514/0,596 (costes 5, 40).
 - **Reproducibilidad v4:** predicciones idénticas al brazo medido (diferencia máxima 0,0) y CSV igual byte a byte en dos ejecuciones de `pipeline.py`.
 - **Verdad de referencia:** solo `ctrl` (definición y 5 min públicos); `raw` ya no se mide. v4 usaba costes (40, 40), decididos contra `ctrl`.
@@ -162,6 +162,12 @@ Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/externa
 - Entrenar y medir contra `ctrl`. Entrenar con `ctrl` falló en el HGB de dos etapas (Metrica −0,02/−0,04), pero funciona en el codificador: el fallo era del modelo, no de las etiquetas.
 - `BallPossession` de DFL: sin definición pública localizada (README de IDSSE no la da; el artículo de Bassek et al. no se pudo leer).
 
+- Por qué no se entrenó antes con Metrica: era la única prueba entre proveedores y se reservó entera; dejar un partido fuera cada vez la conserva. La curva de aprendizaje saturada era del mismo proveedor y no dice nada de añadir otro: hueco de razonamiento corregido con `metrica_mix.py`.
+- Medir en un proveedor que también está en entrenamiento infla la cifra: el HGB con Metrica sube en Metrica (+0,013/+0,012) y nada en IDSSE (−0,001/+0,011). Solo cuenta la generalización a un partido de otro proveedor nunca visto, en la degradación del reto.
+- Por qué una idea obliga a reentrenar: cambia la entrada (huecos, resolución, balón rellenado) y los modelos por pliegue no se guardan, solo sus predicciones. Atajo sin entrenar: los modelos de todo IDSSE nunca vieron Metrica, así que sirven para medir en Metrica cuánto pierde v5 con una degradación nueva antes de decidir reentrenar.
+- Cachés y predicciones fuera de pliegue de `improve_live` (`matches`, `sets`, `oof`, `metrica`) no estaban en disco; se regeneraron con las mismas semillas. La referencia regenerada reproduce v5 (0,767/0,779), así que la regeneración es fiel. Copia de los `.pt` anteriores en `improve_live/encoder_models_backup/`.
+- CUDA sin memoria (8 GB) en un pliegue del codificador por fragmentación; con `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` siguió.
+
 ### Literatura (revisada 2026-11-02)
 
 - **A favor del codificador:** PathCRF (Kim et al., arXiv 2602.12080, código `hyunsungkim-ds/pathcrf`) usa los mismos 7 partidos IDSSE (5 de entrenamiento): set attention por equipo + módulo temporal + CRF. Ablaciones: F1 65,3 sin CRF, 73,1 con Viterbi fijo, 75,7 con CRF de transiciones dinámicas; separar interacciones dentro/entre equipos 68,2 → 75,7; 25 fps 77,2 frente a 75,7 a 5 fps. Equipo por frame 92,4 %. Usa tracking limpio con balón. Borghesi, Costa, Morra y Lamberti (ESWA 2023): TCN + capas invariantes a permutación, posesión 86,2 % (+7,3 sobre reglas), vivo/muerto 89,2 %. Kim et al. (KDD 2023, `pientist/ballradar`) y TranSPORTmer (ACCV 2024): Set Transformers para poseedor y estado de juego.
@@ -191,6 +197,18 @@ Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/externa
 | sharp + encoder_kick | −0,010 (2/7) / −0,004 (2/7) | −0,009/−0,008 | 17 %/20 % |
 
 **Todo fuera.** La v5 actual con balón suavizado pierde poco (0,764/0,784 frente a 0,767/0,779 con balón nítido): los golpes borrosos del reto no la limitan. El toque da +0,011 al HGB solo, pero desaparece al mezclarlo con el codificador, que ya saca esa señal de las posiciones. Las < 2 s siguen sin recuperarse con ninguna evidencia de toque. Nota: las cachés `improve_live/matches` y `sets` no estaban en disco; se regeneraron con las mismas semillas (3 min y ~15 min).
+- **Segundo proveedor en entrenamiento** (`metrica_mix.py`, `improve_live/metrica_mix.json`; motivo: la caída entre proveedores, −0,1, es nuestra limitación principal). Metrica 1–3 (el 3 en EPTS + JSON, `metrica_exp.read_epts3`; 272 posesiones `ctrl` de 14,3 s) como tres partidos más: 3 sorteos × 2 huecos, ambas vistas, `ctrl` con la misma regla. Protocolo fijado antes de medir: A = IDSSE fuera (principal), B = Metrica fuera, C = un solo proveedor → el otro. Codificador `metrica` (3 semillas) frente al base regenerado (3 semillas; reproduce v5: 0,767/0,779). Solo `ctrl`, uniformes / en muerto:
+
+| Pareja | A IDSSE | B Metrica (3 partidos) |
+|---|---|---|
+| v5 (solo IDSSE) | 0,767/0,779 | 0,680/0,709 |
+| Metrica en HGB y codificador | +0,012 (6/7) / +0,002 (4/7) | +0,014/+0,006 |
+| Metrica solo en HGB | −0,005 (1/7) / +0,009 (4/7) | −0,002/−0,003 |
+| **Metrica solo en codificador** | **+0,013 (4/7) / +0,019 (7/7)** | **+0,011/+0,005** |
+
+HGB solo: con Metrica 0,705/0,746 frente a 0,706/0,735 (B +0,013/+0,012). C (HGB): Metrica → IDSSE 0,662/0,687; IDSSE → Metrica 0,638/0,663; ningún proveedor transfiere mejor. Recall < 2 s sin cambio (18–23 %). **Bajo la puerta** (+0,01–0,02), aunque positivo en los 4 criterios con el codificador.
+- **Duración mínima de muerto en Viterbi** (`decode_min.py`, cadena de k subestados, k 0/0,5/1/2 s anidado): idéntico en todo; v5 ya no produce paradas < 2 s. **Fuera, sin efecto.**
+- **Dónde se pierde el balón** (`gap_stats.py`, solo entradas; vivo del reto = v5 no muerto, con sesgo). Pérdidas por 1000 frames vivos con balón según el jugador más cercano 0–1/1–2/2–4/> 4 m: reto 1,0/1,3/1,0/0,9 (plano: **sin oclusión por jugadores**), IDSSE parecido. Según la línea (fuera/0–3/3–10/> 10 m): reto 11,7/2,3/1,4/0,6; huecos en muerto 7,3/2,8/1,3/0,6 (ya lo reproduce). **Diferencia: el reto pierde el balón lento** (3,3 frente a 6,0 m/s si sigue visible); nuestros huecos, a cualquier velocidad (6,6–7,5). Candidato: huecos con riesgo según velocidad y línea (rehace el banco).
 - **Código reutilizable:** PathCRF (`hyunsungkim-ds/pathcrf`, MPL-2.0 según GitHub; trae eventos DFL sincronizados), databallpy, ELASTIC (licencia no declarada), Ball Radar (sin licencia: no reutilizable).
 
 ## Código
@@ -215,6 +233,12 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
    1. **Hecho: σ 6 frames** (arriba). Era: calibrar la degradación del balón (horas, CPU). Hoy `train.degrade` añade ruido al balón pero no lo suaviza. Añadir suavizado y ruido de posición al balón de IDSSE hasta igualar en el reto los cuantiles de Δv (p50/p90/p99 1,4/4,3/8,7), velocidad (p50/p90 5,1/14,3) y la fracción con jugador a ≤ 1,5 m (42 %). Estadísticas de entrada sin etiquetas, como el perfil de huecos; la ventana pública no se usa. Va primero: sin él, cualquier señal de toque se aprende con golpes nítidos que el reto no tiene.
    2. **Hecho, fuera** (arriba): ±0,01 con el codificador, recall < 2 s sin cambio. Era: evidencia de toque robusta a golpes suavizados (1 día): Δv a ±3, ±6 y ±12 frames, cambio de dirección, equipo del más cercano en el golpe, último equipo que golpeó; al HGB y, agregada por paso de 5 frames (máximo), al codificador.
    3. **Hecho** junto con el 2: v5 se queda como está; no hace falta reentrenarla con balón suavizado. Era: reentrenar v5 y medir (2–3 h de cálculo): recall por duración y spellF1 contra `ctrl` en IDSSE y Metrica, puerta habitual. Al cambiar la degradación cambia el banco: comparar v5 actual y la nueva **sobre la misma degradación nueva**.
-4. Repositorio público y documento técnico.
-5. Comprobar la regeneración en una máquina limpia.
+3f. **Ideas de degradación y decodificación** (tras cerrar 3e):
+   1. **Metrica en entrenamiento: hecho, bajo la puerta** (arriba). Decisión aplazada al final: solo en el codificador, +0,01–0,02 en los 4 criterios (7/7 en IDSSE en muerto).
+   2. **Duración mínima de muerto: fuera**, sin efecto.
+   3. **Oclusión por jugador cercano: fuera** sin entrenar; el riesgo de perder el balón es plano en el reto.
+   4. **Siguiente: huecos según la velocidad y la línea.** Primero el atajo: v5 de todo IDSSE sobre Metrica con huecos actuales frente a huecos con riesgo calibrado a `gap_stats.py` (misma proporción ausente), ~45–60 min. Reentrenar solo si v5 cae claramente.
+   5. Después, si hay tiempo: codificador a 12,5 Hz (solo GPU; la evidencia apunta a que el límite no es la resolución) y relleno del balón en huecos < 1 s (la mediana de los huecos es 10,7 s).
+4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
+5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
 6. Subir el CSV solo cuando se decida; la entrega oficial es el 17/11/2026.

@@ -14,6 +14,8 @@ or encoder_<variant>_s<seed>. Variants, fixed before any score was seen:
   trans    a fourth output, the logit that possession changes hands here (H<->A within one step),
            written as logit_<gap> for a decoder whose switch cost moves with it.
   kick     the 13 kick channels of encoder_data.py appended to the ball input.
+  metrica  Metrica games 1-3 added to the training pool (metrica_mix.py's protocol): IDSSE held out
+           with all three games in, then each Metrica game held out from all IDSSE and the other two.
   sharp    fitted on the unblurred bench (<data> without its _blur suffix), tested on <data>: the
            current recipe facing the blurred ball.
 Experiment only: not part of the submission environment.
@@ -38,7 +40,9 @@ DILATIONS = (1, 2, 4, 8, 16, 32, 64, 128)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 WEIGHT_CAP = 25.0
 VARIANTS = {"base": {}, "w05": dict(alpha=0.5), "w1": dict(alpha=1.0), "trans": dict(trans=True),
-            "kick": dict(kick=True), "sharp": dict(sharp=True)}
+            "kick": dict(kick=True), "sharp": dict(sharp=True), "metrica": dict(metrica=True)}
+METRICA_GAMES = (1, 2, 3)
+METRICA_REPEATS = 3
 KICK_CHANNELS = 13
 
 
@@ -183,8 +187,53 @@ def predict(model, path):
     return lp, d, (logit[index].astype(np.float32) if model.head.out_channels > 3 else None)
 
 
+def predict_metrica(model, out_root, arm, games):
+    sets = os.path.join(out_root, "sets")
+    for game in games:
+        for repeat in range(METRICA_REPEATS):
+            for g in GAPS:
+                lp, d, logit = predict(model, os.path.join(sets, "metrica_g{}_{}_{}.npz".format(game, repeat, g)))
+                extra = {} if logit is None else dict(logit=logit)
+                np.savez(os.path.join(out_root, "metrica", "lp_{}_{}_{}_{}.npz".format(arm, game, repeat, g)),
+                         lp=lp, y=d["y_raw"], period=d["period"], **extra)
+
+
+def main_metrica(out_root, seed):
+    arm = "encoder_metrica_s{}".format(seed)
+    sets = os.path.join(out_root, "sets")
+    name = lambda m, g, d: os.path.join(sets, "{}_{}_d{}.npz".format(m, g, d))
+    met = lambda games: [os.path.join(sets, "metrica_g{}_{}_{}.npz".format(x, r, g))
+                         for x in games for r in range(METRICA_REPEATS) for g in GAPS]
+    folder = os.path.join(out_root, "oof", arm)
+    os.makedirs(folder, exist_ok=True)
+    for held in MATCHES:
+        target = os.path.join(folder, held + ".npz")
+        if os.path.isfile(target):
+            continue
+        t = time.time()
+        files = [name(m, g, d) for m in MATCHES if m != held for g in GAPS for d in range(DRAWS)] + met(METRICA_GAMES)
+        model = train(files, seed)
+        np.savez(target, **{"lp_" + g: predict(model, name(held, g, 0))[0] for g in GAPS})
+        print(arm, held, round(time.time() - t), "s", flush=True)
+    every = [name(m, g, d) for m in MATCHES for g in GAPS for d in range(DRAWS)]
+    for held in METRICA_GAMES:
+        t = time.time()
+        model = train(every + met([x for x in METRICA_GAMES if x != held]), seed)
+        predict_metrica(model, out_root, arm, [held])
+        print(arm, "metrica", held, round(time.time() - t), "s", flush=True)
+
+
 def main():
     out_root = sys.argv[1]
+    if sys.argv[2] == "predict":                    # an all-IDSSE encoder on every Metrica game
+        arm = sys.argv[3]
+        model = Encoder().to(DEVICE)
+        model.load_state_dict(torch.load(os.path.join(out_root, "encoder_models", arm + ".pt"), map_location=DEVICE))
+        predict_metrica(model.eval(), out_root, arm, METRICA_GAMES)
+        return
+    if sys.argv[3:4] == ["metrica"]:
+        main_metrica(out_root, int(sys.argv[2]))
+        return
     seed = int(sys.argv[2]) if len(sys.argv) > 2 else SEED
     variant = sys.argv[3] if len(sys.argv) > 3 else "base"
     if variant != "base":

@@ -43,13 +43,8 @@ def idsse_job(args):
 
 
 def metrica_events(game):
-    frames, teams = [], []
-    with open(os.path.join(metrica_exp.FOLDER, "Sample_Game_{}_RawEventsData.csv".format(game))) as handle:
-        for row in csv.DictReader(handle):
-            if row["Type"] in ("PASS", "SHOT", "SET PIECE") and row["Team"] in ("Home", "Away"):
-                frames.append(int(row["Start Frame"]) - 1)
-                teams.append(0 if row["Team"] == "Home" else 1)
-    return np.array(frames), np.array(teams)
+    rows = [(f, t) for f, t, kind in metrica_exp.events(game) if kind in ("PASS", "SHOT", "SET PIECE")]
+    return np.array([f for f, _ in rows]), np.array([t for _, t in rows])
 
 
 def metrica_control(y, frames, owners):

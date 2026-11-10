@@ -140,7 +140,9 @@ def metrica_job(args):
     steps = step_frames(period)
     p, b = tensors(players, ball, team, period, tuple(data["pitch"]), steps)
     kick = np.stack([kick_steps(players, ball, side, steps) for side in (team, 1 - team)]).astype(np.float16)
-    np.savez(path, players=p, ball=b, kick=kick, steps=steps, period=period, y_raw=y)
+    import live_review
+    y_ctrl = live_review.metrica_control(y, *live_review.metrica_events(game))
+    np.savez(path, players=p, ball=b, kick=kick, steps=steps, period=period, y_raw=y, y_ctrl=y_ctrl)
     return path
 
 
@@ -152,7 +154,7 @@ if __name__ == "__main__":
     with ProcessPoolExecutor(3) as pool:
         for path in pool.map(idsse_job, jobs):
             print("ready", os.path.basename(path), flush=True)
-    jobs = [(g, r, gaps, lengths, share) for g in metrica_exp.GAMES for r in range(metrica_exp.REPEATS)
+    jobs = [(g, r, gaps, lengths, share) for g in metrica_exp.ALL_GAMES for r in range(metrica_exp.REPEATS)
             for gaps in improve.GAPS]
     with ProcessPoolExecutor(3) as pool:
         for path in pool.map(metrica_job, jobs):
