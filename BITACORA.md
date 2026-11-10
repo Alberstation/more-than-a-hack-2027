@@ -152,7 +152,6 @@ El correo prevalece sobre todo lo anterior. Prohíbe: comprobar la salida contra
 - Entrenamiento y constantes: solo IDSSE y Metrica (externos). La verdad pública solo comprueba el formato y se miró para entender la etiqueta (permitido); ninguna constante se eligió con ella.
 - Licencias: IDSSE CC-BY 4.0 (citado). Metrica sin licencia formal; su README la ofrece a la comunidad y pide reconocimiento (citado en el documento y en `v6.py`). SkillCorner (MIT) no usado.
 - Repositorio: sin datos del partido; `evaluation/gt` y los CSV de baseline vienen del repositorio original.
-- **Zonas grises a confirmar con los organizadores:** (1) la degradación usa estadísticas sin etiquetas del tracking del reto (longitudes de huecos, proporción ausente y dos proporciones medidas sobre predicciones de v2): el tracking es dato permitido como entrada, pero «ajustar solo con datos externos» admite una lectura estricta; (2) el desarrollo usó un asistente de IA que vio estadísticas agregadas calculadas en local, nunca los ficheros del partido.
 
 ## Hechos útiles
 
