@@ -28,6 +28,7 @@ import improve  # noqa: E402
 FPS = 25
 NEAR_EDGES = (0, 1, 2, 4, 1e9)
 LINE_EDGES = (-1e9, 0, 3, 10, 1e9)
+SPEED_EDGES = (0, 2, 5, 10, 1e9)
 
 
 def stats(players, ball, live, pitch):
@@ -42,7 +43,8 @@ def stats(players, ball, live, pitch):
     lost = ~seen[at + 1]
     out = dict(missing_live=float(np.mean(~seen[live])), lost_per_min=float(lost.sum() / (live.sum() / FPS / 60)),
                outside=float(np.mean(line[seen & live] < 0)))
-    for name, x, edges in (("near", near[at], NEAR_EDGES), ("line", line[at], LINE_EDGES)):
+    for name, x, edges in (("near", near[at], NEAR_EDGES), ("line", line[at], LINE_EDGES),
+                           ("speed", np.nan_to_num(v[at], nan=0.0), SPEED_EDGES)):
         out[name] = [float(np.mean(lost[(x >= a) & (x < b)])) * 1000 for a, b in zip(edges[:-1], edges[1:])]
         out[name + "_share"] = [float(np.mean((x >= a) & (x < b))) for a, b in zip(edges[:-1], edges[1:])]
     out["speed_lost"] = float(np.nanmedian(v[at[lost]]))
@@ -87,13 +89,14 @@ def main():
         rows["IDSSE " + g] = {k: (np.mean([p[k] for p in part], axis=0).tolist() if isinstance(part[0][k], list)
                                   else float(np.mean([p[k] for p in part]))) for k in part[0]}
     print("pérdida del balón por 1000 frames vivos con balón, según el jugador más cercano (0-1, 1-2, 2-4, > 4 m)")
-    print("y según la distancia a la línea (fuera, 0-3, 3-10, > 10 m)")
+    print("según la distancia a la línea (fuera, 0-3, 3-10, > 10 m) y la velocidad del balón (0-2, 2-5, 5-10, > 10 m/s)")
     for name, r in rows.items():
         print("  {:<14} falta vivo {:.1%}  pérdidas/min {:.1f}  fuera {:.1%}  cercano al perder {:.2f} m  "
               "vel perder/seguir {:.1f}/{:.1f}".format(name, r["missing_live"], r["lost_per_min"], r["outside"],
                                                       r["near_lost"], r["speed_lost"], r["speed_kept"]))
         print("     cercano: " + "  ".join("{:5.1f} ({:.0%})".format(h, s) for h, s in zip(r["near"], r["near_share"])))
         print("     linea:   " + "  ".join("{:5.1f} ({:.0%})".format(h, s) for h, s in zip(r["line"], r["line_share"])))
+        print("     veloc.:  " + "  ".join("{:5.1f} ({:.0%})".format(h, s) for h, s in zip(r["speed"], r["speed_share"])))
 
 
 if __name__ == "__main__":

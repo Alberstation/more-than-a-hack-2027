@@ -6,7 +6,8 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 ## Estado
 
 - **Reto:** H/A/D por frame, Barça–Athletic, 199.319 frames. Ranking `spellF1`, desempate `macroF1`.
-- **Mejor versión y entrega por defecto: v5** = HGB de v4 entrenado con `ctrl` (`ctrl_mixed_all3`) mezclado con el codificador de conjuntos (3 semillas), w 0,75, Viterbi (20, 20). `python possession/idsse.py` (también baja los eventos), `python possession/v5.py` y `python possession/pipeline.py`. Pesos del codificador en `possession/models/` (git), inferencia NumPy float64 de un hilo; sin torch. CSV `possession_v5.csv`, SHA-256 `866cb21a…a32dcc`, idéntico en dos ejecuciones (50 s); 182 posesiones de 18,1 s, 48,1 % muerto, 52/59 balones parados. HGB idéntico al medido. 5 min públicos (solo comprobación): spellF1 0,707 (v4 0,637), macroF1 0,910.
+- **Entrega: v6** = v5 con el codificador entrenado también con Metrica 1–3 (3 semillas, `possession/models/encoder_metrica_s*.npz`), w 0,75, Viterbi (14, 20); el HGB es el de v5. `python possession/v5.py` y `python possession/pipeline.py` (v6 por defecto). CSV `possession_v6.csv` = `evaluation/results/Barca Reborn.csv`, SHA-256 `a6ef47f6…a2d5ee`, idéntico en dos ejecuciones, válido; 184 posesiones de 17,9 s. Validación (anidada, `ctrl`): IDSSE 0,780/0,798 (v5 0,767/0,779; 4/7 y 7/7), Metrica partido fuera 0,691/0,714 (v5 0,680/0,709). Constantes con `encoder_score.py pick` (media 0,789). Adoptada bajo la puerta (+0,01–0,02) por decisión del usuario: mejora en los 4 criterios. Inferencia NumPy frente a torch ≤ 9,3e-7, argmax 100 %. v5 sigue regenerándose idéntica (`866cb21a…`). 5 min públicos (solo comprobación, tras decidir): spellF1 0,707 (= v5), macroF1 0,922 (v5 0,910).
+- **Versión anterior: v5** = HGB de v4 entrenado con `ctrl` (`ctrl_mixed_all3`) mezclado con el codificador de conjuntos (3 semillas), w 0,75, Viterbi (20, 20). `python possession/idsse.py` (también baja los eventos), `python possession/v5.py` y `python possession/pipeline.py`. Pesos del codificador en `possession/models/` (git), inferencia NumPy float64 de un hilo; sin torch. CSV `possession_v5.csv`, SHA-256 `866cb21a…a32dcc`, idéntico en dos ejecuciones (50 s); 182 posesiones de 18,1 s, 48,1 % muerto, 52/59 balones parados. HGB idéntico al medido. 5 min públicos (solo comprobación): spellF1 0,707 (v4 0,637), macroF1 0,910.
 - **Versión anterior: v4** (`mixed_all3` con `LIVE_DEAD=1`, balón muerto móvil). `python possession/train_v4.py` y `python possession/pipeline.py --out <equipo>.csv`.
 - **CSV:** `evaluation/results/possession_v4.csv`, SHA-256 `e6a371b2…cc538e`; 212 posesiones de 15,8 s, 47,4 % muerto, 52/59 balones parados con reanudación. **Respaldos:** `possession_v3.csv` (`e034f5d7…dd72ce`) y `possession_v2.csv`, intactos.
 - **CV v3:** spellF1 0,556 (huecos uniformes) y 0,596 (en muerto), frente a 0,490 y 0,510 de `ref`.
@@ -37,7 +38,8 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 | v2 | HGB, 46 características, IDSSE degradado, Viterbi (10, 40) | CV 0,4805; respaldo |
 | v3 | v2 + toque, forma y control (85 características), 3 degradaciones × 2 patrones de huecos, Viterbi (5, 40) | Respaldo |
 | v4 | v3 entrenado con balón muerto móvil, Viterbi (40, 40) | Respaldo |
-| **v5** | HGB v4 con `ctrl` + codificador de conjuntos (3 semillas, w 0,75), Viterbi (20, 20) | Actual |
+| v5 | HGB v4 con `ctrl` + codificador de conjuntos (3 semillas, w 0,75), Viterbi (20, 20) | Respaldo |
+| **v6** | v5 con el codificador entrenado con IDSSE + Metrica 1–3, Viterbi (14, 20) | Actual |
 
 Dominio corregido en v2: ruido suave, velocidades normalizadas por partido, sin posiciones extremas de equipo.
 
@@ -142,6 +144,16 @@ Recall de v5 según balón visible en la posesión (`short_review.py ball`, IDSS
 
 Datos: SkillCorner Open Data (20 partidos, MIT, 3,6 GB) clonado en `data/external/skillcorner`. Sin formularios: solo fuentes de descarga directa.
 
+## Auditoría de reglas (2026-11-10, correo de aclaración de los organizadores incluido)
+
+El correo prevalece sobre todo lo anterior. Prohíbe: comprobar la salida contra el vídeo; etiquetas o datos hechos a mano sobre el partido; subir los datos del partido a servicios de IA; entrenar, ajustar o calibrar con la verdad de posesión o con el vídeo. Permite: comprobaciones automáticas con los datos dados; inspeccionar datos y vídeo para entender la posesión; usar como entrada vídeo, tracking, Smart Tagging u otros datos generados si no se entrenó con la verdad ni con el vídeo; ficheros intermedios; cualquier dataset con derechos (revisar licencia). Entrenar y ajustar: solo con datos externos.
+
+- Vídeo: nunca usado ni comprobado. Etiquetas a mano: ninguna. Producción no lee la verdad pública (búsqueda en `possession/*.py`).
+- Entrenamiento y constantes: solo IDSSE y Metrica (externos). La verdad pública solo comprueba el formato y se miró para entender la etiqueta (permitido); ninguna constante se eligió con ella.
+- Licencias: IDSSE CC-BY 4.0 (citado). Metrica sin licencia formal; su README la ofrece a la comunidad y pide reconocimiento (citado en el documento y en `v6.py`). SkillCorner (MIT) no usado.
+- Repositorio: sin datos del partido; `evaluation/gt` y los CSV de baseline vienen del repositorio original.
+- **Zonas grises a confirmar con los organizadores:** (1) la degradación usa estadísticas sin etiquetas del tracking del reto (longitudes de huecos, proporción ausente y dos proporciones medidas sobre predicciones de v2): el tracking es dato permitido como entrada, pero «ajustar solo con datos externos» admite una lectura estricta; (2) el desarrollo usó un asistente de IA que vio estadísticas agregadas calculadas en local, nunca los ficheros del partido.
+
 ## Hechos útiles
 
 - Definición (CHALLENGE.md): exige ganancia **controlada**; balón disputado o suelto sigue con el último equipo; toque, desvío y duelo aéreo sin control no cambian posesión. Apunta a `ctrl`. La verdad sale mecánicamente del dueño del tracking corregido, sin suavizar; `ctrl` es solo nuestra aproximación.
@@ -234,11 +246,12 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
    2. **Hecho, fuera** (arriba): ±0,01 con el codificador, recall < 2 s sin cambio. Era: evidencia de toque robusta a golpes suavizados (1 día): Δv a ±3, ±6 y ±12 frames, cambio de dirección, equipo del más cercano en el golpe, último equipo que golpeó; al HGB y, agregada por paso de 5 frames (máximo), al codificador.
    3. **Hecho** junto con el 2: v5 se queda como está; no hace falta reentrenarla con balón suavizado. Era: reentrenar v5 y medir (2–3 h de cálculo): recall por duración y spellF1 contra `ctrl` en IDSSE y Metrica, puerta habitual. Al cambiar la degradación cambia el banco: comparar v5 actual y la nueva **sobre la misma degradación nueva**.
 3f. **Ideas de degradación y decodificación** (tras cerrar 3e):
-   1. **Metrica en entrenamiento: hecho, bajo la puerta** (arriba). Decisión aplazada al final: solo en el codificador, +0,01–0,02 en los 4 criterios (7/7 en IDSSE en muerto).
+   1. **Metrica en entrenamiento: adoptada como v6** (decisión del usuario, bajo la puerta pero positiva en los 4 criterios).
    2. **Duración mínima de muerto: fuera**, sin efecto.
    3. **Oclusión por jugador cercano: fuera** sin entrenar; el riesgo de perder el balón es plano en el reto.
-   4. **Siguiente: huecos según la velocidad y la línea.** Primero el atajo: v5 de todo IDSSE sobre Metrica con huecos actuales frente a huecos con riesgo calibrado a `gap_stats.py` (misma proporción ausente), ~45–60 min. Reentrenar solo si v5 cae claramente.
-   5. Después, si hay tiempo: codificador a 12,5 Hz (solo GPU; la evidencia apunta a que el límite no es la resolución) y relleno del balón en huecos < 1 s (la mediana de los huecos es 10,7 s).
+   4. **Huecos según velocidad y línea: hechos, sin reentrenar; v5 no sufre** (`speed_gaps.py`). Riesgo del reto por velocidad 0–2/2–5/5–10/> 10 m/s: 2,6/1,7/0,6/0,1 por 1000 frames vivos con balón (nuestros huecos: planos). Patrón `speed`: muerto oculto como `dead` pero **sin desfase** (el desfase de ±2 s ocultaba frames vivos junto a cada parada a cualquier velocidad y aplanaba el riesgo; era la mayoría de las pérdidas en vivo), y en vivo un proceso que en cada frame visible empieza un hueco con probabilidad base × riesgo(velocidad) × riesgo(línea), base por bisección para el 12,7 % oculto. Resultado en Metrica: riesgo 1,0/0,6/0,2/0,0, se pierde a 2,3 frente a 6,1 m/s (más exagerado que el reto: prueba de estrés). v5 de todo IDSSE sobre Metrica 1–3, constantes de v5: uniformes 0,683, en muerto 0,709, **speed 0,715** (los 3 partidos suben frente a en muerto). No hace falta reentrenar.
+   5. **Descartadas sin entrenar** (comprobar antes si puede importar): relleno del balón en huecos < 1 s, que son 17 de 150 huecos y el 0,05 % de los frames graduados; codificador a 12,5 Hz, porque el HGB a 25 fps recupera menos cortas (13–17 %) que la pareja con el codificador a 5 Hz (20 %): la resolución no es el límite.
+   6. Método rápido para lo que quede: atajo sin entrenar en Metrica con los modelos de todo IDSSE; si hay que entrenar, criba con receta reducida (cada 10 frames, 1 sorteo, 1 semilla) pareada con la referencia, y confirmación completa solo si pasa; guardar los modelos por pliegue para que las pruebas de degradación no exijan reentrenar.
 4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
 6. Subir el CSV solo cuando se decida; la entrega oficial es el 17/11/2026.

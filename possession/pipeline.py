@@ -1,6 +1,6 @@
 """Tracking in, H / A / D per frame out: evidence per frame, then one Viterbi pass per half.
 
-    python possession/pipeline.py                     # writes evaluation/results/possession_v5.csv
+    python possession/pipeline.py                     # writes evaluation/results/possession_v6.csv
     python possession/pipeline.py --out my_team.csv
 
 Three changes over starter/baseline.py, each one a line of the improvement plan (docs/plan):
@@ -171,10 +171,11 @@ def predict_v3(game=GAME, model_path=None):
     return labels
 
 
-def proba_v5(game=GAME):
-    """(p_hgb, p_encoder, blocks): v5's two sets of per-frame class probabilities."""
+def proba_v5(game=GAME, version=None):
+    """(p_hgb, p_encoder, blocks): v5's (or v6's) two sets of per-frame class probabilities."""
     import pickle
     from possession import encoder, features_v3, v5
+    v5 = version or v5
 
     with open(v5.HGB_PATH, "rb") as handle:
         hgb = pickle.load(handle)["model"]
@@ -189,11 +190,12 @@ def proba_v5(game=GAME):
     return p_hgb, p_enc, blocks
 
 
-def predict_v5(game=GAME):
+def predict_v5(game=GAME, version=None):
     """v4's HGB on control labels mixed with the set encoder (seeds averaged), one Viterbi per half."""
     from possession import v5
+    v5 = version or v5
 
-    p_hgb, p_enc, blocks = proba_v5(game)
+    p_hgb, p_enc, blocks = proba_v5(game, v5)
     p = (1 - v5.ENCODER_WEIGHT) * p_hgb + v5.ENCODER_WEIGHT * p_enc
     scores = np.log(np.clip(p, 1e-4, 1.0))
 
@@ -208,6 +210,13 @@ def predict_v5(game=GAME):
             block[:kickoff - first, :2] = -1e6
         labels[first:last + 1] = decode.STATES[decode.viterbi(block, transitions)]
     return labels
+
+
+def predict_v6(game=GAME):
+    """v5's pipeline with the encoder trained on IDSSE and Metrica, and v6's constants."""
+    from possession import v6
+
+    return predict_v5(game, v6)
 
 
 def set_piece_check(labels, game=GAME):
@@ -243,14 +252,16 @@ def describe(labels, game=GAME):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--version", choices=("v1", "v2", "v3", "v4", "v5"), default="v5",
+    parser.add_argument("--version", choices=("v1", "v2", "v3", "v4", "v5", "v6"), default="v6",
                         help="v1: hand-set evidence; v2: model fitted on IDSSE (run train.py); "
                              "v3: frozen dead ball (run train_v3.py); v4: HGB with moving dead ball (run train_v4.py); "
-                             "v5: best, HGB on control labels mixed with the set encoder (run v5.py)")
+                             "v5: HGB on control labels mixed with the set encoder (run v5.py); "
+                             "v6: best, v5 with the encoder also trained on Metrica")
     parser.add_argument("--out", help="default evaluation/results/possession_<version>.csv")
     args = parser.parse_args()
 
-    labels = {"v1": predict, "v2": predict_v2, "v3": predict_v3, "v4": predict_v4, "v5": predict_v5}[args.version]()
+    labels = {"v1": predict, "v2": predict_v2, "v3": predict_v3, "v4": predict_v4, "v5": predict_v5,
+              "v6": predict_v6}[args.version]()
     out = args.out or os.path.join(RESULTS_DIR, "possession_{}.csv".format(args.version))
     path = write_submission(out, labels)
     n, mean_s, share = describe(labels)

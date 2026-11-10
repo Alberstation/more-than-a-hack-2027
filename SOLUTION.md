@@ -5,15 +5,16 @@ From the provided tracking to the submission file, in four commands. Python 3.12
 ```bash
 pip install -r requirements-solution.txt
 python possession/idsse.py          # downloads the 7 IDSSE/DFL open matches and their events (CC-BY 4.0) to data/external/
-python possession/v5.py             # degrades them, fits the v5 HGB on control labels -> data/models/
-python possession/pipeline.py --out <team_name>.csv
-python evaluation/validate_submission.py <team_name>.csv
+python possession/v5.py             # degrades them, fits the HGB on control labels -> data/models/ (v5 and v6 share it)
+python possession/pipeline.py --out "Barca Reborn.csv"     # v6 by default
+python evaluation/validate_submission.py "Barca Reborn.csv"
 ```
 
 Everything generated (tracking caches, external data, the fitted HGB, submissions) stays under
 `data/` or `evaluation/results/`, both gitignored: the match data must not be redistributed. The
 set-encoder weights are the one trained artefact in git (`possession/models/`, 3 seeds, 1.8 MB
-each): they come from IDSSE only and run in NumPy, so regenerating the submission needs no GPU.
+each): v6's (`encoder_metrica_s*.npz`) come from IDSSE and the three Metrica sample games, v5's from
+IDSSE only, and they run in NumPy, so regenerating the submission needs no GPU.
 
 | file | what it does |
 |---|---|
@@ -28,16 +29,19 @@ each): they come from IDSSE only and run in NumPy, so regenerating the submissio
 | `possession/v5.py` | v5 constants, and fits its HGB: v4 on control labels |
 | `possession/encoder.py` | v5 set encoder at inference: per-player tensors and a NumPy forward pass |
 | `possession/decode.py` | three-state H/A/D Viterbi with a cost per change of state |
-| `possession/pipeline.py` | v1 to v5 predictions for the challenge match; v5 is the default |
+| `possession/v6.py` | v6 constants and encoder paths: v5 with the encoder also trained on Metrica |
+| `possession/pipeline.py` | v1 to v6 predictions for the challenge match; v6 is the default |
 
-v5 mixes the HGB (weight 0.25) with a set encoder (0.75): per team, a shared MLP over players
+v6, the submission, is v5 with an encoder trained on two providers (IDSSE and Metrica's sample
+games), decoded with costs (14, 20). v5 mixes the HGB (weight 0.25) with a set encoder (0.75): per team, a shared MLP over players
 pooled by mean, max and closeness to the ball, then a dilated temporal convolution of about
 +-50 s. Then one Viterbi pass per half, costs (20, 20). The encoder is trained on GPU by
 `possession/experiments/encoder_train.py` in a separate torch environment, and exported by
 `encoder_export.py`; retraining it on GPU is not bit-for-bit repeatable, which is why its weights
 are committed. Inference is float64 on one thread, and the CSV is identical run to run.
 
-What is fitted, and on what: only IDSSE (other games, allowed by RULES.md). The challenge match
+What is fitted, and on what: only IDSSE and, for v6's encoder, Metrica's sample games (other games,
+allowed by RULES.md; Metrica is credited as its README asks). The challenge match
 contributes input data only -- its tracking, Smart Tagging kickoffs, and the length of its ball
 gaps for the degradation. Its public five minutes are used for nothing but a format check.
 

@@ -187,11 +187,11 @@ def predict(model, path):
     return lp, d, (logit[index].astype(np.float32) if model.head.out_channels > 3 else None)
 
 
-def predict_metrica(model, out_root, arm, games):
+def predict_metrica(model, out_root, arm, games, gaps=GAPS):
     sets = os.path.join(out_root, "sets")
     for game in games:
         for repeat in range(METRICA_REPEATS):
-            for g in GAPS:
+            for g in gaps:
                 lp, d, logit = predict(model, os.path.join(sets, "metrica_g{}_{}_{}.npz".format(game, repeat, g)))
                 extra = {} if logit is None else dict(logit=logit)
                 np.savez(os.path.join(out_root, "metrica", "lp_{}_{}_{}_{}.npz".format(arm, game, repeat, g)),
@@ -217,10 +217,18 @@ def main_metrica(out_root, seed):
         print(arm, held, round(time.time() - t), "s", flush=True)
     every = [name(m, g, d) for m in MATCHES for g in GAPS for d in range(DRAWS)]
     for held in METRICA_GAMES:
+        if os.path.isfile(os.path.join(out_root, "metrica", "lp_{}_{}_0_uniform.npz".format(arm, held))):
+            continue
         t = time.time()
         model = train(every + met([x for x in METRICA_GAMES if x != held]), seed)
         predict_metrica(model, out_root, arm, [held])
         print(arm, "metrica", held, round(time.time() - t), "s", flush=True)
+    # The model that ships (v6): all IDSSE and all three Metrica games.
+    target = os.path.join(out_root, "encoder_models", arm + ".pt")
+    if not os.path.isfile(target):
+        model = train(every + met(METRICA_GAMES), seed)
+        torch.save(model.state_dict(), target)
+        print(arm, "final saved", flush=True)
 
 
 def main():
@@ -229,7 +237,7 @@ def main():
         arm = sys.argv[3]
         model = Encoder().to(DEVICE)
         model.load_state_dict(torch.load(os.path.join(out_root, "encoder_models", arm + ".pt"), map_location=DEVICE))
-        predict_metrica(model.eval(), out_root, arm, METRICA_GAMES)
+        predict_metrica(model.eval(), out_root, arm, METRICA_GAMES, tuple(sys.argv[4:]) or GAPS)
         return
     if sys.argv[3:4] == ["metrica"]:
         main_metrica(out_root, int(sys.argv[2]))
