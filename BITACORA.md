@@ -227,25 +227,25 @@ HGB solo: con Metrica 0,705/0,746 frente a 0,706/0,735 (B +0,013/+0,012). C (HGB
 Fuentes: `reports/Posesiones cortas en tracking.md`, `Mejoras de posesión para v6.md`, `Posesión con información faltante.md` y sus notas. Estado: **pendiente** (por probar, en orden), **condicional**, **fuera** (con motivo). Las ganancias son estimadas, no medidas.
 
 **Codificador (reutiliza el HGB y las cachés):**
-1. **Pendiente: cabeza de poseedor por jugador**, supervisada con el balón limpio externo (último que toca). λ 0,3 y 1 como dos brazos. La probabilidad del equipo es el logsumexp de sus jugadores (Ball Radar suma por jugador). +0,01 a +0,03. En PathCRF, quitar las auxiliares cuesta −2,9/−6,0 de F1.
-2. **Pendiente: cabeza de estado del balón** (control, vuelo, disputa, muerto), en la misma pasada que la 1. Peral 2025 usa 4 estados; el "incontrolado" es ~10 % de los frames.
-3. **Pendiente: consistencia vista limpia / degradada** del mismo tramo (Zeng, CVPR 2024: FrameDrop más consistencia). 0 a +0,02. Hay que vigilar la memoria por la doble pasada.
+1. **Fuera (criba 3j): cabeza de poseedor por jugador**, supervisada con el balón limpio externo (último que toca). λ 0,3 y 1 como dos brazos. La probabilidad del equipo es el logsumexp de sus jugadores (Ball Radar suma por jugador). +0,01 a +0,03. En PathCRF, quitar las auxiliares cuesta −2,9/−6,0 de F1.
+2. **Fuera (criba 3j): cabeza de estado del balón** (control, vuelo, disputa, muerto), en la misma pasada que la 1. Peral 2025 usa 4 estados; el "incontrolado" es ~10 % de los frames.
+3. **Fuera (criba 3j): consistencia vista limpia / degradada** del mismo tramo (Zeng, CVPR 2024: FrameDrop más consistencia). 0 a +0,02. Hay que vigilar la memoria por la doble pasada.
 4. **Pendiente: SkillCorner como tercer proveedor**, solo en el codificador y con la regla `ctrl` (MIT, 20 partidos en disco, 10 fps, `possession.group`). Primero un atajo: v6 congelada puntuada sobre los 20 partidos. 0 a +0,02.
-5. **Condicional a la 1: ISAB / atención entre rivales.** 0 a +0,01. Un SAB plano da 68,2 en PathCRF frente a 75,7 de su diseño.
-6. **Condicional a la estrés: aleatorizar la degradación** por tramo: tasa y longitud de huecos, blur y ruido, en ráfagas y en rangos centrados en el perfil del reto (AugMix, aleatorización de dominio). Variantes:
+5. **Fuera (cae con la 1): ISAB / atención entre rivales.** 0 a +0,01. Un SAB plano da 68,2 en PathCRF frente a 75,7 de su diseño.
+6. **Fuera (criba 3j, solo gana en el banco aleatorio): aleatorizar la degradación** por tramo: tasa y longitud de huecos, blur y ruido, en ráfagas y en rangos centrados en el perfil del reto (AugMix, aleatorización de dominio). Variantes:
    - la mitad de los lotes con el balón oculto al 100 % (receta de Ball Radar);
    - ocultar jugadores enteros durante toda la secuencia (Peral: mejor que frames sueltos).
    
    Aviso: aleatorizar más allá de lo realista empeora.
-7. **Pendiente, barato: SWA** (promedio de pesos al final del entrenamiento), sin coste en inferencia. SWAD da +3,6 pp en DomainBed.
-8. **Pendiente, barato: aumentar con el campo reflejado** (simetrías izquierda/derecha y arriba/abajo, con el cambio de lado correspondiente).
+7. **Fuera (criba 3j): SWA** (promedio de pesos al final del entrenamiento), sin coste en inferencia. SWAD da +3,6 pp en DomainBed.
+8. **Dudosa (criba 3j, +0,003): aumentar con el campo reflejado** (simetrías izquierda/derecha y arriba/abajo, con el cambio de lado correspondiente).
 9. **Por probar si sobra tiempo: ensemble excluyendo un proveedor** (codificador sin IDSSE o sin Metrica) junto a las semillas.
 
 **Decodificación y mezcla (sin entrenar, sobre las predicciones fuera de pliegue):**
 10. **Pendiente: mezcla en logit con temperatura.** ≤ +0,005.
 11. **Pendiente: duración máxima / prior de duración.** En un hueco largo, probablemente hubo un cambio dentro. La duración mínima ya está fuera. CAD (arXiv 2605.10149): la duración es su término más útil, aunque en 50Salads baja la exactitud por frame.
 12. **Pendiente: abaratar el coste de cambio solo dentro de los huecos**, con la probabilidad de cambio por frame de forward-backward en NumPy. Teoría: el umbral que maximiza F1 está por debajo de 0,5 (Lipton 2014). Ataca que emitimos menos posesiones (~0,9 veces el ritmo de `ctrl`).
-13. **Condicional a la 2: Viterbi de 5 estados** con transiciones legales (PathCRF, filtro híbrido de Yandex). Riesgo: `ctrl` ya asigna la disputa al último equipo.
+13. **Fuera (cae con la 2): Viterbi de 5 estados** con transiciones legales (PathCRF, filtro híbrido de Yandex). Riesgo: `ctrl` ya asigna la disputa al último equipo.
 
 **Nuevas fuentes de entrada:**
 14. **Fuera (V1, ver 3j): vídeo táctico, balón con WASB** (MIT; comprobar la licencia de los pesos) para rellenar huecos. +0,026 simulado (7/7).
@@ -403,9 +403,15 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
        | 7, SWA (`ref_swa`) | −0,004 −0,005 −0,002 0,000 | −0,003 (1/4) | −0,002 | Fuera; tampoco ayuda en ningún otro brazo |
        | 8, campo reflejado (`F`) | −0,004 +0,013 0,000 +0,003 | +0,003 (3/4) | −0,004 | Dudosa |
        | Reacción diferida (`RX`) | +0,015 +0,005 −0,006 +0,001 | +0,004 (3/4) | +0,001 | Dudosa |
+       | 1, poseedor λ 0,3 (`P03`) | +0,001 −0,013 −0,006 +0,010 | −0,002 (2/4) | −0,007 | Fuera |
+       | 1, poseedor λ 1 (`P1`) | +0,004 −0,010 −0,019 +0,004 | −0,005 (2/4) | −0,015 | Fuera |
+       | 1+2, poseedor y estado (`PS`) | +0,003 −0,014 0,000 +0,016 | +0,001 (2/4) | −0,003 | Fuera |
+       | 3, consistencia (`C`) | −0,006 −0,002 −0,012 +0,006 | −0,004 (1/4) | −0,012 | Fuera |
+       | 6, degradación aleatoria (`R`) | −0,005 −0,001 −0,008 +0,009 | −0,001 (1/4) | +0,012 | Fuera: gana solo en el banco aleatorio y pierde en el perfil del reto |
 
      - Ruido entre pliegues: ~±0,01. Las dudosas solo vuelven si, combinadas con una ganadora, suman.
-     - En curso: P03, P1, PS, C y R.
+     - Sus versiones SWA tampoco pasan. Con 1 y 2 fuera, caen también 5 (ISAB) y 13 (Viterbi de 5 estados), que dependían de ellas.
+     - Queda: SkillCorner (4) y, si suma, F y RX juntas sobre la ganadora.
    - **Confirmación:** ganadoras juntas, 10 pliegues (~30 min), luego 3 semillas con constantes anidadas (~1,5 h), puerta habitual contra v6. Después, regeneración limpia, documentación y PDF.
 4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
