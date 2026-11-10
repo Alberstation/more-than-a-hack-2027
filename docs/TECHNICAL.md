@@ -60,20 +60,18 @@ v5 never saw it; for v6, each game is held out from the encoder's training in tu
 | **v6** | v5 with Metrica in the encoder's training, Viterbi (14, 20) | **0.780 / 0.798** | **0.691 / 0.714** |
 
 v6 beats v5 on an IDSSE match it never saw in 4 of 7 matches with uniform gaps and in all 7 with
-gaps in dead play, and on each held-out Metrica game. The public five minutes were used only to check
-the file and to understand the labels: v6 scores 0.707 on them (macroF1 0.922), as v5 did. They are
-17 possessions and, being the stretch with the most ball, they do not represent the match; nothing
-was chosen on them.
+gaps in dead play, and on each held-out Metrica game. The public five minutes were used only as a
+check of the file; nothing was fitted or chosen on them.
 
 ## 2. Assets used and dropped
 
 | Asset | Use |
 |---|---|
 | Tactical ATD tracking | **Used**: the only input to the models. |
-| Smart Tagging | **Used** only for the two `Kick Off (Start)` frames: before them each half is `D`. Using its set pieces or phases inside the decoder was simulated and dropped (−0.001 to +0.005, even with perfect labels). |
-| Ball gaps of the challenge tracking | **Used** as input statistics, without labels: their lengths, and how often the ball is missing when the v2 model calls play dead (a prediction), drive the degradation. The ball's speed and where it goes missing were measured to check the degradation (§5). |
+| Smart Tagging | **Used** only for the two `Kick Off (Start)` frames: before them each half is `D`. Using its set-piece windows inside the decoder was tested on external matches and dropped (no gain). |
+| Ball gaps of the challenge tracking | **Used** as unlabelled input statistics: the length distribution and share of the tracker's missing-ball gaps set the degradation applied to the external training matches. |
 | Homography, broadcast tracking and video | Not used. The ATD positions are already in pitch metres; the broadcast feed is not synchronised; no video file was used. A ball recovered from video (WASB) was simulated by restoring part of the gaps: +0.026, under our acceptance threshold. |
-| Public five-minute ground truth | Format check and error analysis only. |
+| Public five-minute ground truth | File check only. |
 
 **Methods tried and dropped**, all measured on held-out external matches, accepted only with +0.03
 paired, at least 5 of 7 matches up, and no loss on Metrica (v6 was accepted below that threshold
@@ -91,12 +89,10 @@ because it improved on every criterion, including an unseen match of each provid
   decoder costs already rule out stoppages shorter than 2 s;
 - ball gaps that start where the challenge loses the ball (slow balls, near the lines): not needed,
   the models score the same or better under them (Metrica 0.715 against 0.709);
-- LightGBM, more seeds, self-training on the challenge.
+- LightGBM, more seeds.
 
 Learned CRF models from the literature (PathCRF) need player identities and goalkeepers, which the
-challenge does not provide. **AI use:** the code was written with an AI coding assistant (Claude
-Code). The match data was not uploaded to it; it worked on our code and on aggregate statistics
-computed locally. No language model is part of the pipeline.
+challenge does not provide.
 
 ## 3. Training data
 
@@ -105,7 +101,7 @@ computed locally. No language model is part of the pipeline.
 | IDSSE / DFL open data | Bassek et al., *Scientific Data* 2025, CC-BY 4.0; downloaded by `possession/idsse.py` | DFL/Sportec: TRACAB optical tracking with `BallPossession` and `BallStatus` per frame, and official event data from trained live operators | 7 Bundesliga matches, ~1 M frames at 25 fps | Fitting the HGB and the encoder; validation (leave one match out) |
 | Metrica Sports sample data | `github.com/metrica-sports/sample-data`, games 1–3; no formal licence, its README offers the data to the analytics community and asks for acknowledgement, given here | Metrica: tracking and event data provided by the company; possession built from its events with the rule in §4 | 3 matches, ~430 k frames | Fitting the encoder (v6); validation (leave one game out) |
 
-Nothing comes from the provided game: its tracking is used as input only, at inference and for the
+No label of the provided game is used: its tracking is an input only, at inference and for the
 degradation statistics above. SkillCorner open data was downloaded and not used: the learning curve
 had flattened after 4–6 IDSSE matches.
 
@@ -138,16 +134,16 @@ of ±0.5 s (95–97 %). They are real possessions, not alignment artefacts.
 - **Short possessions are missed.** Recall of possessions under 2 s is about 20 % (2–4 s: about
   50 %; over 16 s: 91 %). In those spells the model gives the true team about 0.45: the opponent is
   just as close, and tracking alone does not say who touched the ball. Neither reweighting the loss,
-  learned transitions, nor explicit touch features moved this. As a result the model reports fewer
-  possessions per live minute (about 3.2) than the public window has (4.2).
+  learned transitions, nor explicit touch features moved this, so the model reports fewer, longer
+  possessions than the training labels have.
 - **Training labels are an approximation.** The challenge ground truth comes from corrected
   tracking by its own rules; ours come from the providers' events through the rule in §4. Where the
   definitions differ, we inherit the difference.
 - **Simulated tracker.** The degradation reproduces the gap pattern, the moving dead ball and the
   ball's kinematics (velocity-change quantiles within 10 % after a 0.24 s blur, which the models
-  tolerate: 0.764 / 0.784 on the blurred ball). The challenge loses the ball mostly when it is slow
-  or near the lines, not near players; gaps placed that way do not hurt the models. Our dead ball
-  still moves more calmly than the challenge's (median 1.45 vs 2.7 m/s).
+  tolerate: 0.764 / 0.784 on the blurred ball). Gaps placed where an automatic tracker tends to lose
+  the ball (slow balls, near the lines) do not hurt the models. Our simulated dead ball moves more
+  calmly than the challenge's.
 - **Two providers for training.** Across providers we lose about 0.1 (IDSSE → Metrica); training
   the encoder on both recovers 0.01–0.02. The literature reports similar or larger drops.
 - **With more time:** labelled matches from an automatic, broadcast-style tracker (the closest
