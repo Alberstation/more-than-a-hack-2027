@@ -36,9 +36,11 @@ import encoder_train as et  # noqa: E402
 ITERS = int(os.environ.get("SCREEN_ITERS", "1000"))
 SEED = 2027
 FOLDS = (("idsse", "J03WMX"), ("idsse", "J03WN1"), ("metrica", 1), ("metrica", 2))
+if os.environ.get("SCREEN_FOLDS") == "all":   # confirmation: every held match / game
+    FOLDS = tuple(("idsse", m) for m in ("J03WMX", "J03WN1", "J03WPY", "J03WOH", "J03WQQ", "J03WOY", "J03WR9"))         + tuple(("metrica", g) for g in (1, 2, 3))
 ARMS = {"ref": {}, "nomet": dict(nomet=True), "P03": dict(poss=0.3), "P1": dict(poss=1.0),
         "PS": dict(poss=0.3, state=0.3), "C": dict(cons=1.0), "F": dict(flip=True), "R": dict(rand=True),
-        "RX": dict(react=True)}
+        "RX": dict(react=True), "SK": dict(sk=20), "SK10": dict(sk=10)}
 FLIP_P, FLIP_B = [1, 3, 5], [1, 3]
 S = 20
 
@@ -89,9 +91,13 @@ def files(fold, cfg):
     ids = lambda ms: [os.path.join(root, "{}_{}_d{}.npz".format(m, g, d)) for m in ms for g in et.GAPS for d in range(et.DRAWS)]
     met = lambda gs: [] if cfg.get("nomet") else [os.path.join(root, "metrica_g{}_{}_{}.npz".format(x, r, g))
                                                  for x in gs for r in range(et.METRICA_REPEATS) for g in et.GAPS]
+    # skillcorner_data.py sets, sorted match ids; SK10 takes every other one
+    sk_ids = sorted({n.split("_")[1] for n in os.listdir(os.path.join(OUT, "sets")) if n.startswith("skillcorner_")})
+    sk = [os.path.join(OUT, "sets", "skillcorner_{}_0_{}.npz".format(m, g))
+          for m in sk_ids[::20 // cfg["sk"]] for g in et.GAPS] if cfg.get("sk") else []
     if kind == "idsse":
-        return ids([m for m in et.MATCHES if m != held]) + met(et.METRICA_GAMES)
-    return ids(et.MATCHES) + met([x for x in et.METRICA_GAMES if x != held])
+        return ids([m for m in et.MATCHES if m != held]) + met(et.METRICA_GAMES) + sk
+    return ids(et.MATCHES) + met([x for x in et.METRICA_GAMES if x != held]) + sk
 
 
 def clean_key(path):

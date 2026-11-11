@@ -24,6 +24,8 @@ import metrica_mix  # noqa: E402
 
 HGB = "ctrl_mixed_all3"
 FOLDS = (("idsse", "J03WMX"), ("idsse", "J03WN1"), ("metrica", 1), ("metrica", 2))
+if os.environ.get("SCREEN_FOLDS") == "all":   # confirmation: every held match / game
+    FOLDS = tuple(("idsse", m) for m in ("J03WMX", "J03WN1", "J03WPY", "J03WOH", "J03WQQ", "J03WOY", "J03WR9"))         + tuple(("metrica", g) for g in (1, 2, 3))
 W, SWITCH, DEAD = 0.75, 14.0, 20.0
 SCREEN = os.path.join(improve.OUT, "screen")
 
@@ -72,11 +74,14 @@ def main(arms):
         d = v - ref
         rand = np.mean([done[(a, h)]["rand"] for k, h in FOLDS if k == "metrica"]) - ref_rand
         up = int(np.sum(d > 0))
-        verdict = "fuera" if d.mean() <= 0 or up <= 2 else ("sube" if d.mean() >= 0.01 and up >= 3 else "dudosa")
+        n = len(FOLDS)
+        verdict = "fuera" if d.mean() <= 0 or up <= n // 2 else ("sube" if d.mean() >= 0.01 and up > n // 2 else "dudosa")
+        kinds = np.array([k for k, _ in FOLDS])
+        by = "   idsse {:+.4f}  metrica {:+.4f}".format(d[kinds == "idsse"].mean(), d[kinds == "metrica"].mean())
         summary[a] = dict(folds=d.tolist(), mean=float(d.mean()), up=up, rand=float(rand), verdict=verdict)
         print("{:<9} ".format(a) + " ".join("{:+.3f}".format(x) for x in d)
-              + "   media {:+.4f} ({}/4)   rand {:+.4f}   {}".format(d.mean(), up, rand, verdict))
-    with open(os.path.join(SCREEN, "summary.json"), "w") as handle:
+              + "   media {:+.4f} ({}/{})   rand {:+.4f}   {}".format(d.mean(), up, n, rand, verdict) + by)
+    with open(os.path.join(SCREEN, "summary{}.json".format("_all" if len(FOLDS) > 4 else "")), "w") as handle:
         json.dump(summary, handle, indent=1)
 
 

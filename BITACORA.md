@@ -230,7 +230,7 @@ Fuentes: `reports/Posesiones cortas en tracking.md`, `Mejoras de posesión para 
 1. **Fuera (criba 3j): cabeza de poseedor por jugador**, supervisada con el balón limpio externo (último que toca). λ 0,3 y 1 como dos brazos. La probabilidad del equipo es el logsumexp de sus jugadores (Ball Radar suma por jugador). +0,01 a +0,03. En PathCRF, quitar las auxiliares cuesta −2,9/−6,0 de F1.
 2. **Fuera (criba 3j): cabeza de estado del balón** (control, vuelo, disputa, muerto), en la misma pasada que la 1. Peral 2025 usa 4 estados; el "incontrolado" es ~10 % de los frames.
 3. **Fuera (criba 3j): consistencia vista limpia / degradada** del mismo tramo (Zeng, CVPR 2024: FrameDrop más consistencia). 0 a +0,02. Hay que vigilar la memoria por la doble pasada.
-4. **Pendiente: SkillCorner como tercer proveedor**, solo en el codificador y con la regla `ctrl` (MIT, 20 partidos en disco, 10 fps, `possession.group`). Primero un atajo: v6 congelada puntuada sobre los 20 partidos. 0 a +0,02.
+4. **En confirmación (criba 3j: Metrica +0,023, 3/3): SkillCorner como tercer proveedor**, solo en el codificador y con la regla `ctrl` (MIT, 20 partidos en disco, 10 fps, `possession.group`). Primero un atajo: v6 congelada puntuada sobre los 20 partidos. 0 a +0,02.
 5. **Fuera (cae con la 1): ISAB / atención entre rivales.** 0 a +0,01. Un SAB plano da 68,2 en PathCRF frente a 75,7 de su diseño.
 6. **Fuera (criba 3j, solo gana en el banco aleatorio): aleatorizar la degradación** por tramo: tasa y longitud de huecos, blur y ruido, en ráfagas y en rangos centrados en el perfil del reto (AugMix, aleatorización de dominio). Variantes:
    - la mitad de los lotes con el balón oculto al 100 % (receta de Ball Radar);
@@ -411,7 +411,10 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
 
      - Ruido entre pliegues: ~±0,01. Las dudosas solo vuelven si, combinadas con una ganadora, suman.
      - Sus versiones SWA tampoco pasan. Con 1 y 2 fuera, caen también 5 (ISAB) y 13 (Viterbi de 5 estados), que dependían de ellas.
-     - Queda: SkillCorner (4) y, si suma, F y RX juntas sobre la ganadora.
+     - **SkillCorner (4)** (`skillcorner_data.py`): 20 partidos, ~22 h útiles tras quitar los tramos sin jugadores (repeticiones); cada tramo ≥ 30 s es un periodo; de 10 a 25 fps. Etiquetas: equipo del último `player_possession` dentro de cada fase de juego; muerto fuera de las fases (16–36 %). Brazos `SK` (20 partidos) y `SK10` (10).
+       - 4 pliegues: `SK` −0,015 −0,002 +0,010 +0,032, +0,006 (2/4), aleatorio +0,018: fuera por la regla, pero lo decide un pliegue. Ampliado a 10 pliegues (`SCREEN_FOLDS=all`).
+       - 10 pliegues, media (ganados) / IDSSE / Metrica / aleatorio: `SK` +0,005 (6/10) / −0,002 / **+0,023 (3/3)** / +0,025; `SK_swa` +0,005 (7/10) / −0,003 / +0,023 / +0,021; `SK10` +0,003 / −0,003 / +0,016 / +0,017; `SK10_swa` fuera.
+       - Lectura: plano en IDSSE, gana en otro proveedor y crece con los datos. **Pasa a confirmación** con la receta completa.
    - **Confirmación:** ganadoras juntas, 10 pliegues (~30 min), luego 3 semillas con constantes anidadas (~1,5 h), puerta habitual contra v6. Después, regeneración limpia, documentación y PDF.
 4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
