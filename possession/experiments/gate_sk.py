@@ -1,6 +1,7 @@
 """Plan 3j confirmation: v6 encoders against the SkillCorner ones (encoder_train.py metrica_sk), paired.
 
     LIVE_DEAD=1 python possession/experiments/gate_sk.py <seeds...>      e.g. 2027   or   2027 2028 2029
+    GATE_ARM=encoder_sk LIVE_DEAD=1 python possession/experiments/gate_sk.py 2027 2028 2029   (no Metrica in training)
 
 Both mixed with ctrl_mixed_all3 (out of fold on IDSSE, all-IDSSE on Metrica), seeds averaged in
 probability. Weight and Viterbi costs picked on the other six IDSSE matches (nested); Metrica held
@@ -83,10 +84,10 @@ def evaluate(arms, pool):
 
 def main(seeds):
     base = ["encoder_metrica_s{}".format(s) for s in seeds]
-    sk = ["encoder_metrica_sk_s{}".format(s) for s in seeds]
+    sk = ["{}_s{}".format(os.environ.get("GATE_ARM", "encoder_metrica_sk"), s) for s in seeds]
     with ProcessPoolExecutor(8) as pool:
         a, b = evaluate(base, pool), evaluate(sk, pool)
-    print("semillas", " ".join(map(str, seeds)), "| v6 -> SkillCorner, contra ctrl")
+    print("semillas", " ".join(map(str, seeds)), "| v6 ->", sk[0].rsplit("_s", 1)[0], ", contra ctrl")
     for g in improve.GAPS:
         for mode, ik, mk in (("anidado", "idsse", "metrica"), ("const v6", "idsse_v6", "metrica_v6")):
             di, dm = b[g][ik] - a[g][ik], b[g][mk] - a[g][mk]

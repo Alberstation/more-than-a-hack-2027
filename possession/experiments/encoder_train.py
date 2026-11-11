@@ -14,6 +14,7 @@ or encoder_<variant>_s<seed>. Variants, fixed before any score was seen:
   trans    a fourth output, the logit that possession changes hands here (H<->A within one step),
            written as logit_<gap> for a decoder whose switch cost moves with it.
   kick     the 13 kick channels of encoder_data.py appended to the ball input.
+  sk       IDSSE plus the 20 SkillCorner matches, no Metrica (Metrica scored as an unseen provider).
   metrica_sk  as metrica, plus the 20 SkillCorner matches (skillcorner_data.py) in every pool.
   metrica  Metrica games 1-3 added to the training pool (metrica_mix.py's protocol): IDSSE held out
            with all three games in, then each Metrica game held out from all IDSSE and the other two.
@@ -199,6 +200,32 @@ def predict_metrica(model, out_root, arm, games, gaps=GAPS):
                          lp=lp, y=d["y_raw"], period=d["period"], **extra)
 
 
+def main_sk(out_root, seed):
+    """IDSSE + the 20 SkillCorner matches, no Metrica: Metrica is an unseen provider (plan 3j, SKnomet).
+    One all-IDSSE model scores every Metrica game and is the one that would ship."""
+    arm = "encoder_sk_s{}".format(seed)
+    sets = os.path.join(out_root, "sets")
+    sk_files = sorted(os.path.join(sets, n) for n in os.listdir(sets) if n.startswith("skillcorner_"))
+    name = lambda m, g, d: os.path.join(sets, "{}_{}_d{}.npz".format(m, g, d))
+    folder = os.path.join(out_root, "oof", arm)
+    os.makedirs(folder, exist_ok=True)
+    for held in MATCHES:
+        target = os.path.join(folder, held + ".npz")
+        if os.path.isfile(target):
+            continue
+        t = time.time()
+        model = train([name(m, g, d) for m in MATCHES if m != held for g in GAPS for d in range(DRAWS)] + sk_files, seed)
+        np.savez(target, **{"lp_" + g: predict(model, name(held, g, 0))[0] for g in GAPS})
+        print(arm, held, round(time.time() - t), "s", flush=True)
+    target = os.path.join(out_root, "encoder_models", arm + ".pt")
+    if not os.path.isfile(target):
+        t = time.time()
+        model = train([name(m, g, d) for m in MATCHES for g in GAPS for d in range(DRAWS)] + sk_files, seed)
+        torch.save(model.state_dict(), target)
+        predict_metrica(model.eval(), out_root, arm, METRICA_GAMES)
+        print(arm, "final saved, metrica done", round(time.time() - t), "s", flush=True)
+
+
 def main_metrica(out_root, seed, sk=False):
     arm = "encoder_{}_s{}".format("metrica_sk" if sk else "metrica", seed)
     sets = os.path.join(out_root, "sets")
@@ -241,6 +268,9 @@ def main():
         model = Encoder().to(DEVICE)
         model.load_state_dict(torch.load(os.path.join(out_root, "encoder_models", arm + ".pt"), map_location=DEVICE))
         predict_metrica(model.eval(), out_root, arm, METRICA_GAMES, tuple(sys.argv[4:]) or GAPS)
+        return
+    if sys.argv[3:4] == ["sk"]:
+        main_sk(out_root, int(sys.argv[2]))
         return
     if sys.argv[3:4] in (["metrica"], ["metrica_sk"]):
         main_metrica(out_root, int(sys.argv[2]), sys.argv[3] == "metrica_sk")

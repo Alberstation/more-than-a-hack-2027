@@ -419,6 +419,9 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
          - Semilla 2027: IDSSE −0,002/−0,002 (2/7), Metrica +0,021/+0,031 (3/3).
          - 3 semillas, uniforme / muerto: IDSSE −0,008 (1/7) / −0,010 (2/7); Metrica +0,029 / +0,027 (3/3). Con las constantes de v6: IDSSE −0,006 / −0,001, Metrica +0,023 / +0,026.
          - Intercambio: puerta superada en Metrica, pérdida pequeña y repetida en IDSSE. Falta ver si ayuda con un proveedor no visto (sin Metrica en el entrenamiento, medido en Metrica): brazos `nomet` y `SKnomet`.
+         - Proveedor no visto, criba de 10 pliegues: `nomet` IDSSE −0,003, Metrica −0,001; `SKnomet` IDSSE +0,003, Metrica +0,022 (3/3), aleatorio +0,021. SkillCorner generaliza a un proveedor ausente del entrenamiento.
+         - `SKnomet` con receta completa (`encoder_train.py <s> sk`, 3 semillas, `GATE_ARM=encoder_sk gate_sk.py`), frente a v6, que sí vio Metrica: IDSSE −0,007 / −0,011 (3/7, 1/7), Metrica +0,019 / +0,012 (3/3, 2/3). La ventaja en IDSSE de la criba no se sostiene; queda por debajo de `metrica_sk`.
+         - Candidata v7: `metrica_sk` (Metrica +0,029/+0,027, IDSSE −0,008/−0,010). Decisión del usuario.
    - **Confirmación:** ganadoras juntas, 10 pliegues (~30 min), luego 3 semillas con constantes anidadas (~1,5 h), puerta habitual contra v6. Después, regeneración limpia, documentación y PDF.
 4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
