@@ -415,6 +415,10 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
        - 4 pliegues: `SK` −0,015 −0,002 +0,010 +0,032, +0,006 (2/4), aleatorio +0,018: fuera por la regla, pero lo decide un pliegue. Ampliado a 10 pliegues (`SCREEN_FOLDS=all`).
        - 10 pliegues, media (ganados) / IDSSE / Metrica / aleatorio: `SK` +0,005 (6/10) / −0,002 / **+0,023 (3/3)** / +0,025; `SK_swa` +0,005 (7/10) / −0,003 / +0,023 / +0,021; `SK10` +0,003 / −0,003 / +0,016 / +0,017; `SK10_swa` fuera.
        - Lectura: plano en IDSSE, gana en otro proveedor y crece con los datos. **Pasa a confirmación** con la receta completa.
+       - **Confirmación, receta completa** (`encoder_train.py <s> metrica_sk`, 3 semillas, ~22 min cada una; `gate_sk.py`, pareado con v6, mezcla con `ctrl_mixed_all3`, constantes anidadas). v6 reproduce 0,780/0,800 y 0,691/0,714.
+         - Semilla 2027: IDSSE −0,002/−0,002 (2/7), Metrica +0,021/+0,031 (3/3).
+         - 3 semillas, uniforme / muerto: IDSSE −0,008 (1/7) / −0,010 (2/7); Metrica +0,029 / +0,027 (3/3). Con las constantes de v6: IDSSE −0,006 / −0,001, Metrica +0,023 / +0,026.
+         - Intercambio: puerta superada en Metrica, pérdida pequeña y repetida en IDSSE. Falta ver si ayuda con un proveedor no visto (sin Metrica en el entrenamiento, medido en Metrica): brazos `nomet` y `SKnomet`.
    - **Confirmación:** ganadoras juntas, 10 pliegues (~30 min), luego 3 semillas con constantes anidadas (~1,5 h), puerta habitual contra v6. Después, regeneración limpia, documentación y PDF.
 4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).

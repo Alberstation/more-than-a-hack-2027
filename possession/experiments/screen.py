@@ -40,7 +40,8 @@ if os.environ.get("SCREEN_FOLDS") == "all":   # confirmation: every held match /
     FOLDS = tuple(("idsse", m) for m in ("J03WMX", "J03WN1", "J03WPY", "J03WOH", "J03WQQ", "J03WOY", "J03WR9"))         + tuple(("metrica", g) for g in (1, 2, 3))
 ARMS = {"ref": {}, "nomet": dict(nomet=True), "P03": dict(poss=0.3), "P1": dict(poss=1.0),
         "PS": dict(poss=0.3, state=0.3), "C": dict(cons=1.0), "F": dict(flip=True), "R": dict(rand=True),
-        "RX": dict(react=True), "SK": dict(sk=20), "SK10": dict(sk=10)}
+        "RX": dict(react=True), "SK": dict(sk=20), "SK10": dict(sk=10),
+        "SKnomet": dict(sk=20, nomet=True)}
 FLIP_P, FLIP_B = [1, 3, 5], [1, 3]
 S = 20
 
