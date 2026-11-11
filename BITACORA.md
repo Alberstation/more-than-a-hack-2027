@@ -15,7 +15,7 @@ Actualizar al cerrar cada bloque. Detalle numérico: `data/experiments/improve/`
 - **Metrica v3:** 0,601 y 0,643, frente a 0,541 y 0,558.
 - **Partido del reto:** 309 posesiones de 11,2 s; 49/59 balones parados con reanudación.
 - **5 min públicos (solo comprobación):** v3 0,645 con 14 posesiones; v2 0,463 con 21; reales 17. Muestra mínima, no decide nada.
-- **Reproducibilidad:** clon nuevo de GitHub (`d78172f`) + entorno nuevo con `requirements-solution.txt` + solo los 4 archivos de `data/tactical` sin cachés + IDSSE descargado de cero: CSV v5 idéntico (SHA-256 `866cb21a…a32dcc`), válido, 28 min en total. Mismo PC, no otra máquina física. v6: mismo procedimiento con `d087459`, CSV idéntico (`a6ef47f6…a2d5ee`), válido, 32 min.
+- **Reproducibilidad:** clon nuevo de GitHub (`d78172f`) + entorno nuevo con `requirements-solution.txt` + solo los 4 archivos de `data/tactical` sin cachés + IDSSE descargado de cero: CSV v5 idéntico (SHA-256 `866cb21a…a32dcc`), válido, 28 min en total. Mismo PC, no otra máquina física. v6: mismo procedimiento con `d087459`, CSV idéntico (`a6ef47f6…a2d5ee`), válido, 32 min. v7: mismo procedimiento con `3823a05`, CSV idéntico (`2d48ae53…585b74`), válido, 21 min.
 - **Estimación corregida:** las cifras CV y Metrica de arriba usan balón muerto congelado, que no ocurre en el reto. Con balón muerto en movimiento, v3 da CV 0,478/0,556 y Metrica 0,514/0,596 (costes 5, 40).
 - **Reproducibilidad v4:** predicciones idénticas al brazo medido (diferencia máxima 0,0) y CSV igual byte a byte en dos ejecuciones de `pipeline.py`.
 - **Verdad de referencia:** solo `ctrl` (definición y 5 min públicos); `raw` ya no se mide. v4 usaba costes (40, 40), decididos contra `ctrl`.
