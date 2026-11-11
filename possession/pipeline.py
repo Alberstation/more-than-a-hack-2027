@@ -1,6 +1,6 @@
 """Tracking in, H / A / D per frame out: evidence per frame, then one Viterbi pass per half.
 
-    python possession/pipeline.py                     # writes evaluation/results/possession_v6.csv
+    python possession/pipeline.py                     # writes evaluation/results/possession_v7.csv
     python possession/pipeline.py --out my_team.csv
 
 Three changes over starter/baseline.py, each one a line of the improvement plan (docs/plan):
@@ -219,6 +219,13 @@ def predict_v6(game=GAME):
     return predict_v5(game, v6)
 
 
+def predict_v7(game=GAME):
+    """v5's pipeline with the encoder trained on IDSSE, Metrica and SkillCorner, and v7's constants."""
+    from possession import v7
+
+    return predict_v5(game, v7)
+
+
 def set_piece_check(labels, game=GAME):
     """Share of Smart Tagging set pieces with a dead-to-alive restart inside their window.
 
@@ -252,16 +259,17 @@ def describe(labels, game=GAME):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--version", choices=("v1", "v2", "v3", "v4", "v5", "v6"), default="v6",
+    parser.add_argument("--version", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7"), default="v7",
                         help="v1: hand-set evidence; v2: model fitted on IDSSE (run train.py); "
                              "v3: frozen dead ball (run train_v3.py); v4: HGB with moving dead ball (run train_v4.py); "
                              "v5: HGB on control labels mixed with the set encoder (run v5.py); "
-                             "v6: best, v5 with the encoder also trained on Metrica")
+                             "v6: v5 with the encoder also trained on Metrica; "
+                             "v7: best, v6 with the encoder also trained on SkillCorner")
     parser.add_argument("--out", help="default evaluation/results/possession_<version>.csv")
     args = parser.parse_args()
 
     labels = {"v1": predict, "v2": predict_v2, "v3": predict_v3, "v4": predict_v4, "v5": predict_v5,
-              "v6": predict_v6}[args.version]()
+              "v6": predict_v6, "v7": predict_v7}[args.version]()
     out = args.out or os.path.join(RESULTS_DIR, "possession_{}.csv".format(args.version))
     path = write_submission(out, labels)
     n, mean_s, share = describe(labels)
