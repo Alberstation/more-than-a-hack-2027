@@ -33,7 +33,7 @@
 
 \begin{center}
 Barça--Athletic, 199,319 tactical-video frames, one label per frame: \code{H}, \code{A},
-\code{D} (dead ball) or \code{X} (not graded). Submission: version \textbf{v7}.\\
+\code{D} (dead ball) or \code{X} (not graded). Submission: version \textbf{v6}.\\
 Code: \code{possession/}, run from \code{SOLUTION.md}.
 \end{center}
 
@@ -45,11 +45,10 @@ identities. No label for the match may be used. So the model has to learn posses
 \emph{other} matches, and those matches have to be made to look like this tracker before learning
 from them.
 
-\textbf{Pipeline (v7).}
+\textbf{Pipeline (v6).}
 \begin{enumerate}
-\item \textbf{Training data: degraded public matches from three providers.} Seven Bundesliga
-  matches from the IDSSE/DFL open dataset, the three Metrica Sports sample games and the twenty
-  SkillCorner open-data matches (automatic broadcast tracking). We degrade them to match
+\item \textbf{Training data: degraded public matches from two providers.} Seven Bundesliga matches
+  from the IDSSE/DFL open dataset and the three Metrica Sports sample games. We degrade them to match
   the challenge tracker. The ball is hidden in gaps drawn from the length distribution of the
   challenge's own gaps, under two patterns: uniformly at random, or concentrated in dead-ball
   stretches as the challenge's seem to be. We also drop player slots for 1--30\,s stretches
@@ -58,17 +57,19 @@ from them.
   degraded three times under both patterns.
 \item \textbf{Labels for controlled possession} (\code{control.py}, \S\ref{sec:rules}): the
   providers' possession, corrected so that a team that never plays the ball does not get possession.
-\item \textbf{A per-frame set encoder}: per team, a shared MLP over players (position, velocity,
-  offset to the ball) pooled by mean, max and closeness to the ball, followed by a dilated temporal
-  convolution seeing about $\pm$50\,s at 5 steps/s; 451\,k parameters, 3 seeds averaged. Fitted on
-  IDSSE, Metrica and SkillCorner. Trained in PyTorch on GPU; at inference it runs in NumPy float64,
-  so the submission needs no GPU and no torch. Up to v6 it was mixed (weight 0.75) with a
-  \textbf{gradient-boosted tree model} (scikit-learn \code{HistGradientBoostingClassifier}, 85
-  identity-free features: distances of each team to the ball, who is nearest and when that changes,
-  ball kicks, team shape, pass chains, retention; fitted on IDSSE). For v7 the validation picks the
-  encoder alone (weight 1.0; 0.75 scores within 0.001); the tree model is still computed by the
-  pipeline but carries no weight.
-\item \textbf{Decoding.} One three-state Viterbi pass per half over the log-probabilities,
+\item \textbf{Two per-frame models, mixed.}
+  \begin{itemize}
+  \item A \textbf{gradient-boosted tree model} (scikit-learn \code{HistGradientBoostingClassifier})
+    on 85 identity-free features: distances of each team to the ball, who is nearest and when that
+    changes, ball kicks, team shape (quantiles, spread, advance), pass chains, retention. Fitted on
+    IDSSE. Weight 0.25.
+  \item A \textbf{set encoder}: per team, a shared MLP over players (position, velocity, offset to
+    the ball) pooled by mean, max and closeness to the ball, followed by a dilated temporal
+    convolution seeing about $\pm$50\,s at 5 steps/s; 451\,k parameters, 3 seeds averaged. Fitted
+    on IDSSE and Metrica. Weight 0.75. Trained in PyTorch on GPU; at inference it runs in NumPy
+    float64, so the submission needs no GPU and no torch.
+  \end{itemize}
+\item \textbf{Decoding.} One three-state Viterbi pass per half over the mixed log-probabilities,
   with a cost of 14 for each change of possession and 20 for each change to or from dead ball.
   This turns flickering per-frame decisions into possessions, which is what \code{spellF1} counts.
 \end{enumerate}
@@ -78,16 +79,15 @@ wherever the ball is missing (the starter baseline). A model trained on clean tr
 signals that the challenge does not have: a frozen dead ball, a ball that is always visible. The
 gains came from closing that gap: matching the gap pattern (+0.05 to +0.08 spellF1 on held-out
 matches), a moving dead ball (+0.03 to +0.08), labels that follow the definition of controlled
-possession, the set encoder's long temporal context (+0.04 to +0.07), a second provider in the
-encoder's training (+0.01 to +0.02), and a third, SkillCorner (+0.03 on an unseen Metrica game,
-$-0.01$ on an unseen IDSSE match). Every constant (decoder costs, mixture weight) is chosen by
+possession, the set encoder's long temporal context (+0.04 to +0.07), and a second provider in the
+encoder's training (+0.01 to +0.02). Every constant (decoder costs, mixture weight) is chosen by
 leave-one-match-out validation on external data, never on the challenge.
 
 \noindent\begin{minipage}{\textwidth}
 \setlength{\parskip}{0.5em}
 \textbf{Validation results}, \code{spellF1} against controlled-possession labels. The two figures
 are the two gap patterns (uniform / in dead ball). IDSSE: each of the seven matches held out in
-turn. Metrica: v5 never saw it; for v6 and v7, each game is held out from the encoder's training in turn.
+turn. Metrica: v5 never saw it; for v6, each game is held out from the encoder's training in turn.
 
 \begin{center}
 \begin{tabularx}{\textwidth}{l L c c}
@@ -96,19 +96,14 @@ Version & What it adds & IDSSE & Metrica (games 1--3) \\
 \midrule
 v4 & HGB, 3 degradations $\times$ 2 gap patterns, moving dead ball, Viterbi & 0.690 / 0.721 & --- \\
 v5 & HGB on control labels + set encoder (weight 0.75), Viterbi (20, 20) & 0.767 / 0.779 & 0.680 / 0.709 \\
-v6 & v5 with Metrica in the encoder's training, Viterbi (14, 20) & 0.780 / 0.798 & 0.691 / 0.714 \\
-\textbf{v7} & v6 with SkillCorner in the encoder's training, encoder alone, Viterbi (14, 20) & \textbf{0.772 / 0.790} & \textbf{0.720 / 0.741} \\
+\textbf{v6} & v5 with Metrica in the encoder's training, Viterbi (14, 20) & \textbf{0.780 / 0.798} & \textbf{0.691 / 0.714} \\
 \bottomrule
 \end{tabularx}
 \end{center}
 \end{minipage}
 
 v6 beats v5 on an IDSSE match it never saw in 4 of 7 matches with uniform gaps and in all 7 with
-gaps in dead play, and on each held-out Metrica game. v7 is a trade-off we chose on purpose:
-+0.029 / +0.027 on each held-out Metrica game (3 of 3), $-0.008$ / $-0.010$ on IDSSE (1--2 of 7
-up). The challenge tracker is a third provider, and SkillCorner helps across providers: an encoder
-trained on IDSSE and SkillCorner only, without Metrica, still beats v6 on Metrica (+0.019 /
-+0.012), so the gain is not a resemblance to Metrica. The public five minutes were used only as a
+gaps in dead play, and on each held-out Metrica game. The public five minutes were used only as a
 check of the file; nothing was fitted or chosen on them.
 
 \section{Assets used and dropped}
@@ -139,8 +134,7 @@ Public five-minute ground truth & File check only. \\
 
 \textbf{Methods tried and dropped}, all measured on held-out external matches, accepted only with
 +0.03 paired, at least 5 of 7 matches up, and no loss on Metrica (v6 was accepted below that
-threshold because it improved on every criterion, including an unseen match of each provider;
-v7 for the cross-provider gain above):
+threshold because it improved on every criterion, including an unseen match of each provider):
 \begin{itemize}
 \item change-point detector feeding the decoder;
 \item minimum Bayes risk decoding;
@@ -161,7 +155,11 @@ v7 for the cross-provider gain above):
   and a ball-state head as auxiliary losses, consistency between clean and degraded views,
   randomised degradation, weight averaging (SWA), mirrored pitches and a delayed team-reaction
   input. None beat the reference by the screening rule;
-\item decoder variants: logit mixing, cheaper switches inside ball gaps, a long-possession prior.
+\item decoder variants: logit mixing, cheaper switches inside ball gaps, a long-possession prior;
+\item SkillCorner's 20 open matches (MIT, automatic broadcast tracking) in the encoder's training:
+  +0.029 / +0.027 on each held-out Metrica game, but $-0.008$ / $-0.010$ on IDSSE (1--2 of 7 up),
+  3 seeds, constants nested. Not submitted: it trades a loss on one provider for a gain on the
+  other.
 \end{itemize}
 Learned CRF models from the literature (PathCRF) need player identities and goalkeepers, which the
 challenge does not provide.
@@ -183,18 +181,13 @@ Metrica Sports sample data & GitHub \code{metrica-sports/}\allowbreak\code{sampl
   no formal licence, its README offers the data to the analytics community and asks for
   acknowledgement, given here & Metrica: tracking and event data provided by the company;
   possession built from its events with the rule in \S\ref{sec:rules} & 3 matches,
-  $\sim$430\,k frames & Fitting the encoder (v6, v7); validation (leave one game out) \\
-SkillCorner Open Data & GitHub \code{SkillCorner/}\allowbreak\code{opendata}, MIT & SkillCorner:
-  automatic tracking from broadcast video (10\,fps, extrapolated off screen) and its own dynamic
-  events and phases of play. Team = last \code{player\_possession} inside a phase of play, dead
-  ball outside every phase, then the rule in \S\ref{sec:rules} & 20 A-League 2024/25 matches,
-  $\sim$22\,h after removing replays, upsampled to 25\,fps & Fitting the encoder (v7) \\
+  $\sim$430\,k frames & Fitting the encoder (v6); validation (leave one game out) \\
 \bottomrule
 \end{tabularx}
 \end{center}
 No label of the provided game is used: its tracking is an input only, at inference and for the
-degradation statistics above. More IDSSE matches would have added little (the learning curve
-flattens after 4--6); another provider did.
+degradation statistics above. SkillCorner open data was tested in the encoder's training and not
+submitted (\S2).
 
 \section{Possession rules implemented}\label{sec:rules}
 
@@ -238,11 +231,11 @@ clock of $\pm$0.5\,s (95--97\,\%). They are real possessions, not alignment arte
   the models tolerate: 0.764 / 0.784 on the blurred ball). Gaps placed where an automatic tracker
   tends to lose the ball (slow balls, near the lines) do not hurt the models. Our simulated dead
   ball moves more calmly than the challenge's.
-\item \textbf{Three providers for training.} Across providers we lose about 0.1 (IDSSE $\to$
-  Metrica); training the encoder on Metrica recovers 0.01--0.02 and adding SkillCorner about 0.03
-  more on Metrica, at a cost of 0.01 on IDSSE. SkillCorner's dead ball is approximated (outside its
-  phases of play). The literature reports similar or larger drops across providers.
-\item \textbf{With more time:} more matches from automatic trackers, a ball detector trained on external wide-angle tactical footage to
+\item \textbf{Two providers for training.} Across providers we lose about 0.1 (IDSSE $\to$
+  Metrica); training the encoder on both recovers 0.01--0.02. The literature reports similar or
+  larger drops.
+\item \textbf{With more time:} labelled matches from an automatic, broadcast-style tracker (the
+  closest match to this domain), a ball detector trained on external wide-angle tactical footage to
   fill gaps, and per-player touch attribution from video for the sub-2-second possessions.
 \end{itemize}
 
@@ -254,20 +247,18 @@ Python 3.12, CPU, pinned dependencies (\code{requirements-solution.txt}). The ma
 \begin{verbatim}
 pip install -r requirements-solution.txt
 python possession/idsse.py      # downloads the 7 IDSSE matches and their events
-python possession/v5.py         # fits the HGB on degraded IDSSE (shared by v6 and v7)
-python possession/pipeline.py --out "Barca Reborn.csv"     # v7 by default
+python possession/v5.py         # fits the HGB on degraded IDSSE (shared by v6)
+python possession/pipeline.py --out "Barca Reborn.csv"     # v6 by default
 python evaluation/validate_submission.py "Barca Reborn.csv"
 \end{verbatim}
 
 The set-encoder weights are the only trained artefact in git
-(\code{possession/}\allowbreak\code{models/}\allowbreak\code{encoder\_metrica\_sk\_s*.npz}, 3 $\times$ 1.8\,MB,
-fitted on IDSSE, Metrica and SkillCorner only; SkillCorner sets built by
-\code{possession/}\allowbreak\code{experiments/}\allowbreak\code{skillcorner\_data.py}). GPU retraining
-is not bit-for-bit repeatable, which is why we commit the weights. They can be retrained with
-\code{possession/}\allowbreak\code{experiments/}\allowbreak\code{encoder\_train.py} (mode \code{metrica\_sk}) in a
+(\code{possession/models/encoder\_metrica\_s*.npz}, 3 $\times$ 1.8\,MB, fitted on IDSSE and Metrica
+only). GPU retraining is not bit-for-bit repeatable, which is why we commit the weights. They can
+be retrained with \code{possession/experiments/encoder\_train.py} (variant \code{metrica}) in a
 separate torch environment. Inference is single-threaded float64, and the CSV is identical from run
 to run: SHA-256\\
-\code{2d48ae53ca10b216d4f666d8f796096ce644e9b3895c5cc0cd781797d7585b74}.\\
+\code{a6ef47f6b3839a39b03909ceee2531bd7610820eb6943aa5774d8755a7d2d5ee}.\\
 All experiments and their measurements are logged in \code{BITACORA.md}.
 
 \end{document}
