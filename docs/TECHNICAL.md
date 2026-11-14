@@ -63,6 +63,13 @@ v6 beats v5 on an IDSSE match it never saw in 4 of 7 matches with uniform gaps a
 gaps in dead play, and on Metrica on average (+0.011 / +0.005). The public five minutes were used
 only as a check of the file; nothing was fitted or chosen on them.
 
+**Unseen provider.** Frozen, with nothing refitted or retuned, on the 8 SoccerTrack v2 matches that
+carry possession (Scott et al. 2025, CC BY 4.0; university matches, the provider's per-frame ball
+status, control rule of §4): v6 scores 0.731 / 0.898 (spellF1 / macroF1) with the challenge's ball
+gaps and 0.673 / 0.869 with the ball hidden throughout, against 0.714 / 0.893 and 0.671 / 0.867 for
+v5 (7 of 8 matches up with gaps). That ball is rebuilt from the same events as the labels, so the
+figure with ball reads optimistic.
+
 ## 2. Assets used and dropped
 
 | Asset | Use |
@@ -98,6 +105,8 @@ because it improved on all four criteria: both providers, both gap patterns):
 - SkillCorner's 20 open matches (MIT, automatic broadcast tracking) in the encoder's training: +0.029
   / +0.027 on each held-out Metrica game, but −0.008 / −0.010 on IDSSE (1–2 of 7 up), 3 seeds,
   constants nested. Not submitted: it trades a loss on one provider for a gain on the other.
+- SoccerTrack v2 in the encoder's training (ball hidden, or its rebuilt ball with the challenge's
+  gaps): −0.003 on average over 10 held-out folds, down on IDSSE in both. Kept for validation only.
 
 Learned CRF models from the literature (PathCRF) need player identities and goalkeepers, which the
 challenge does not provide.
@@ -111,7 +120,7 @@ challenge does not provide.
 
 No label of the provided game is used: its tracking is an input only, at inference and for the
 degradation statistics above. SkillCorner open data was tested in the encoder's training and not
-submitted (§2).
+submitted (§2). SoccerTrack v2 is used for validation only (§1).
 
 ## 4. Possession rules implemented
 

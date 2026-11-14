@@ -18,6 +18,8 @@ Arms, fixed before any score was seen:
   R      trained on sets_rand (random degradation per file, idea 6); tested as the others
   RX     two more ball-input channels: each team's mean velocity towards the opponent goal (delayed
          reaction, plan 3j)
+  ST     + the 8 SoccerTrack v2 matches (soccertrack_sets.py), ball hidden on every frame
+  STb    + the same matches with their reconstructed ball and the challenge's gaps
 Outputs: <improve_live>/screen/<arm>/idsse_<match>.npz (lp_uniform, lp_dead) and
 metrica_<game>_<repeat>_<gap>.npz (lp), gaps uniform, dead and rand (the S6 bench).
 """
@@ -41,7 +43,7 @@ if os.environ.get("SCREEN_FOLDS") == "all":   # confirmation: every held match /
 ARMS = {"ref": {}, "nomet": dict(nomet=True), "P03": dict(poss=0.3), "P1": dict(poss=1.0),
         "PS": dict(poss=0.3, state=0.3), "C": dict(cons=1.0), "F": dict(flip=True), "R": dict(rand=True),
         "RX": dict(react=True), "SK": dict(sk=20), "SK10": dict(sk=10),
-        "SKnomet": dict(sk=20, nomet=True)}
+        "SKnomet": dict(sk=20, nomet=True), "ST": dict(st="soccertrack"), "STb": dict(st="soccertrackb")}
 FLIP_P, FLIP_B = [1, 3, 5], [1, 3]
 S = 20
 
@@ -96,6 +98,10 @@ def files(fold, cfg):
     sk_ids = sorted({n.split("_")[1] for n in os.listdir(os.path.join(OUT, "sets")) if n.startswith("skillcorner_")})
     sk = [os.path.join(OUT, "sets", "skillcorner_{}_0_{}.npz".format(m, g))
           for m in sk_ids[::20 // cfg["sk"]] for g in et.GAPS] if cfg.get("sk") else []
+    # soccertrack_sets.py: the 8 SoccerTrack v2 matches, ball hidden (ST) or reconstructed with gaps (STb)
+    if cfg.get("st"):
+        sk = sk + sorted(os.path.join(OUT, "sets", n) for n in os.listdir(os.path.join(OUT, "sets"))
+                         if n.startswith(cfg["st"] + "_"))
     if kind == "idsse":
         return ids([m for m in et.MATCHES if m != held]) + met(et.METRICA_GAMES) + sk
     return ids(et.MATCHES) + met([x for x in et.METRICA_GAMES if x != held]) + sk
