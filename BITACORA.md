@@ -424,6 +424,6 @@ Orden razonado y fuentes en `reports/Posesión en tracking fuentes alternativas.
          - `SKnomet` con receta completa (`encoder_train.py <s> sk`, 3 semillas, `GATE_ARM=encoder_sk gate_sk.py`), frente a v6, que sí vio Metrica: IDSSE −0,007 / −0,011 (3/7, 1/7), Metrica +0,019 / +0,012 (3/3, 2/3). La ventaja en IDSSE de la criba no se sostiene; queda por debajo de `metrica_sk`.
          - Candidata v7: `metrica_sk` (Metrica +0,029/+0,027, IDSSE −0,008/−0,010). Montada y regenerada limpia; **no se entrega** (decisión del usuario, ver Estado). La entrega sigue siendo v6.
    - **Confirmación:** ganadoras juntas, 10 pliegues (~30 min), luego 3 semillas con constantes anidadas (~1,5 h), puerta habitual contra v6. Después, regeneración limpia, documentación y PDF.
-4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público.
+4. Documento técnico escrito: `docs/TECHNICAL.md` (inglés), equipo **Barca Reborn**; subir como `Barca Reborn.md/.pdf` y `Barca Reborn.csv`. Repositorio ya público. Repaso final (v6): mejora en Metrica dicha como media (+0,011/+0,005), no por partido; cifra del balón suavizado atribuida a v5; quitada la frase sin fuente sobre la literatura; añadido el tiempo de reproducción (~30 min). PDF de 4 páginas en `evaluation/results/Barca Reborn.pdf`.
 5. Hecho: regeneración desde clon y entorno limpios, CSV idéntico (arriba).
 6. Subir el CSV solo cuando se decida; la entrega oficial es el 17/11/2026.

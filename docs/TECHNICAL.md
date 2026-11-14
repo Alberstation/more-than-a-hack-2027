@@ -60,8 +60,8 @@ v5 never saw it; for v6, each game is held out from the encoder's training in tu
 | **v6** | v5 with Metrica in the encoder's training, Viterbi (14, 20) | **0.780 / 0.798** | **0.691 / 0.714** |
 
 v6 beats v5 on an IDSSE match it never saw in 4 of 7 matches with uniform gaps and in all 7 with
-gaps in dead play, and on each held-out Metrica game. The public five minutes were used only as a
-check of the file; nothing was fitted or chosen on them.
+gaps in dead play, and on Metrica on average (+0.011 / +0.005). The public five minutes were used
+only as a check of the file; nothing was fitted or chosen on them.
 
 ## 2. Assets used and dropped
 
@@ -75,7 +75,7 @@ check of the file; nothing was fitted or chosen on them.
 
 **Methods tried and dropped**, all measured on held-out external matches, accepted only with +0.03
 paired, at least 5 of 7 matches up, and no loss on Metrica (v6 was accepted below that threshold
-because it improved on every criterion, including an unseen match of each provider):
+because it improved on all four criteria: both providers, both gap patterns):
 
 - change-point detector feeding the decoder;
 - minimum Bayes risk decoding;
@@ -149,11 +149,12 @@ of ±0.5 s (95–97 %). They are real possessions, not alignment artefacts.
   definitions differ, we inherit the difference.
 - **Simulated tracker.** The degradation reproduces the gap pattern, the moving dead ball and the
   ball's kinematics (velocity-change quantiles within 10 % after a 0.24 s blur, which the models
-  tolerate: 0.764 / 0.784 on the blurred ball). Gaps placed where an automatic tracker tends to lose
+  tolerate: v5 scores 0.764 / 0.784 on the blurred ball against 0.767 / 0.779 on the sharp one).
+  Gaps placed where an automatic tracker tends to lose
   the ball (slow balls, near the lines) do not hurt the models. Our simulated dead ball moves more
   calmly than the challenge's.
 - **Two providers for training.** Across providers we lose about 0.1 (IDSSE → Metrica); training
-  the encoder on both recovers 0.01–0.02. The literature reports similar or larger drops.
+  the encoder on both recovers 0.01–0.02.
 - **With more time:** labelled matches from an automatic, broadcast-style tracker (the closest
   match to this domain), a ball detector trained on external wide-angle tactical footage to fill
   gaps, and per-player touch
@@ -178,4 +179,6 @@ why we commit the weights. They can be retrained with `possession/experiments/en
 (variant `metrica`) in a separate torch environment. Inference is single-threaded float64, and the
 CSV is identical from run to run: SHA-256
 `a6ef47f6b3839a39b03909ceee2531bd7610820eb6943aa5774d8755a7d2d5ee`.
+From a fresh clone, a fresh environment and the four tactical data files, the whole sequence
+above reproduces that file in about 30 minutes on CPU.
 All experiments and their measurements are logged in `BITACORA.md`.
